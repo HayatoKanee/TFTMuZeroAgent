@@ -1,3 +1,4 @@
+import collections
 import numpy as np
 import config
 from Simulator.stats import COST
@@ -11,7 +12,8 @@ class Observation:
     def __init__(self):
         self.shop_vector = np.zeros(45)
         self.game_comp_vector = np.zeros(208)
-        self.dummy_observation = np.zeros(config.OBSERVATION_SIZE)
+        self.dummy_observation = np.zeros(config.OBSERVATION_SIZE*config.OBSERVATION_TIME_STEPS)
+        self.observation_buffer = collections.deque()
 
     def observation(self, player, action_vector):
         shop_vector = self.shop_vector
@@ -25,7 +27,7 @@ class Observation:
                                                      player.player_vector,
                                                      game_state_vector,
                                                      action_vector], axis=-1)
-        input_vector = complete_game_state_vector
+        # input_vector = complete_game_state_vector
 
         # std = np.std(input_vector)
         # if std == 0:
@@ -33,7 +35,21 @@ class Observation:
         # else:
         #     input_vector = (input_vector - np.mean(input_vector)) / std
         # print(input_vector.shape)
-        return input_vector, complete_game_state_vector
+        # return input_vector, complete_game_state_vector
+
+        # remove oldest observation when buffer size exceeds limit
+        if len(self.observation_buffer) >= config.OBSERVATION_TIME_STEPS*config.OBSERVATION_TIME_STEP_INTERVAL:
+            self.observation_buffer.popleft()
+        self.observation_buffer.append(complete_game_state_vector)
+
+        # get every Nth observation where N is the chosen time step interval
+        observation_list = list(self.observation_buffer)[0::config.OBSERVATION_TIME_STEP_INTERVAL]
+
+        observation_list_flattened = [item for obs in observation_list for item in obs]
+        observation = np.zeros(config.OBSERVATION_SIZE*config.OBSERVATION_TIME_STEPS)
+        observation[:len(observation_list_flattened)] = observation_list_flattened
+
+        return observation, complete_game_state_vector
 
     def generate_game_comps_vector(self):
         output = np.zeros(208)
