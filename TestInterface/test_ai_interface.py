@@ -17,7 +17,7 @@ class DataWorker(object):
         self.agent_network = TFTNetwork()
         self.prev_actions = [0 for _ in range(config.NUM_PLAYERS)]
         self.rank = rank
-
+        self.placements = {}
     # This is the main overarching gameplay method.
     # This is going to be implemented mostly in the game_round file under the AI side of things.
     def collect_gameplay_experience(self, env, buffers, weights):
@@ -89,7 +89,66 @@ class DataWorker(object):
             decoded_action[6:44] = utils.one_hot_encode_number(element_list[1], 38)
             decoded_action[44:54] = utils.one_hot_encode_number(element_list[2], 10)
         return decoded_action
+    
+    def evaluate_agents(self, env):
+        agents = {"player_" + str(r): MCTS(TFTNetwork())
+                  for r in range(config.NUM_PLAYERS)}
+        agents["player_1"].network.tft_load_model(100)
+        agents["player_2"].network.tft_load_model(100)
+        agents["player_3"].network.tft_load_model(200)
+        agents["player_4"].network.tft_load_model(200)
+        agents["player_5"].network.tft_load_model(300)
+        agents["player_6"].network.tft_load_model(300)
+        agents["player_7"].network.tft_load_model(400)
+        agents["player_0"].network.tft_load_model(400)
 
+        while True:
+            # Reset the environment
+            player_observation = env.reset()
+            # This is here to make the input (1, observation_size) for initial_inference
+            player_observation = self.observation_to_input(player_observation)
+            # Used to know when players die and which agent is currently acting
+            terminated = {
+                player_id: False for player_id in env.possible_agents}
+            # Current action to help with MuZero
+            self.placements = {
+                player_id: 0 for player_id in env.possible_agents}
+            current_position = 7
+            info = {player_id: {"player_won": False}
+                    for player_id in env.possible_agents}
+            # While the game is still going on.
+            
+            while not all(terminated.values()):
+                # Ask our model for an action and policy
+                actions = []
+                for i,key in enumerate(agents):
+                    action, _ = agents[key].policy([np.asarray([player_observation[0][i]]), [player_observation[1][i]]])
+                    actions.append(action)
+                actions = [i[0] for i in actions]
+
+                step_actions = self.getStepActions(terminated, actions)
+
+                # Take that action within the environment and return all of our information for the next player
+                next_observation, reward, terminated, _, info = env.step(step_actions)
+                # store the action for MuZero
+                # Set up the observation for the next action
+                player_observation = self.observation_to_input(next_observation)
+                for key, terminate in terminated.items():
+                    if terminate:
+                        self.placements[key] = current_position
+                        current_position -= 1
+                        print(key)
+                        del agents[key]
+
+            for key, value in info.items():
+                if value["player_won"]:
+                    self.placements[key] = 0
+            print(self.placements)
+            for key in self.placements.keys():
+                # Increment which position each model got.
+                self.placements[key][self.placements[key]] += 1
+            print("recorded places {}".format(self.placements))
+            self.rank += config.CONCURRENT_GAMES
 
 class AIInterface:
 
@@ -123,3 +182,12 @@ class AIInterface:
                 train_step += 1
                 if train_step % 10 == 0:
                     global_agent.tft_save_model(train_step)
+    
+    def evaluate(self):
+        os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
+
+
+        env = parallel_env()
+        data_workers = DataWorker(0)
+        data_workers.evaluate_agents(env)
+
