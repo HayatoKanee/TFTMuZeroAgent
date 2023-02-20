@@ -27,6 +27,7 @@ class DataWorker(object):
         self.agent_network = TFTNetwork()
         self.rank = rank
         self.ckpt_time = time.time_ns()
+        self.data = {"sample 1":[0,0,0], "sample 2":[0,0,0], "initial inference":[0,0,0], "recurrent inference":[0,0,0], "backprop":[0,0,0]}
 
     # This is the main overarching gameplay method.
     # This is going to be implemented mostly in the game_round file under the AI side of things.
@@ -59,7 +60,10 @@ class DataWorker(object):
 
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
-
+            for i in self.data:
+                self.data[i][0] += agent.data[i][0] 
+                self.data[i][1] += agent.data[i][1]
+                self.data[i][2] = self.data[i][0]/self.data[i][1]
             # buffers.rewardNorm.remote()
             buffers.store_global_buffer.remote()
             buffers = BufferWrapper.remote(global_buffer)
@@ -181,6 +185,8 @@ class AIInterface:
 
     def __init__(self):
         ...
+        self.data = {"1 episode":[0,0,0]}
+        self.ckpt = 0 
 
     def train_model(self, starting_train_step=0):
 
@@ -219,9 +225,24 @@ class AIInterface:
         while True:
             if ray.get(global_buffer.available_batch.remote()):
                 gameplay_experience_batch = ray.get(global_buffer.sample_batch.remote())
+                self.ckpt = time.time_ns()
                 trainer.train_network(gameplay_experience_batch, global_agent, train_step, train_summary_writer)
+                self.data["1 episode"][0] += time.time_ns() - self.ckpt 
+                self.data["1 episode"][1] += 1 
+                self.data["1 episode"][2] = self.data["1 episode"][0]/self.data["1 episode"][1] 
+
                 storage.set_target_model.remote(global_agent.get_weights())
                 train_step += 1
+                if train_step % 50 == 0:
+                    for i in self.data:
+                        print(self.data[i])
+                        self.data[i] = [0,0,0]
+                    for i in data_workers:
+                        for x in i.data:
+                            print(i.data[x])
+                            i.data[x] = [0,0,0]
+                    ## change config.NUM_SAMPLES here 
+                    ## change config.TARGETED_SAMPLES here
                 if train_step % 100 == 0:
                     storage.set_model.remote()
                     global_agent.tft_save_model(train_step)

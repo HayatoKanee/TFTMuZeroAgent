@@ -25,12 +25,17 @@ class MCTS:
         self.num_actions = 0
         self.ckpt_time = time.time_ns()
         self.default_byte_mapping, self.default_string_mapping = self.create_default_mapping()
+        self.data = {"sample 1":[0,0,0], "sample 2":[0,0,0], "initial inference":[0,0,0], "recurrent inference":[0,0,0], "backprop":[0,0,0]}
 
     def policy(self, observation):
         self.NUM_ALIVE = observation[0].shape[0]
 
         # 0.02 seconds
+        self.ckpt_time = time.time_ns()
         network_output = self.network.initial_inference(observation[0])
+        self.data["initial inference"][0] += time.time_ns() - self.ckpt_time 
+        self.data["initial inference"][1] += 1 
+        self.data["initial inference"][2] = self.data["initial inference"][0]/self.data["initial inference"][1]
 
         value_prefix_pool = np.array(network_output["value_logits"]).reshape(-1).tolist()
         policy_logits = network_output["policy_logits"].numpy()
@@ -39,8 +44,12 @@ class MCTS:
         policy_logits_pool, mappings, string_mapping = self.encode_action_to_str(policy_logits, observation[1])
 
         # 0.003 seconds
+        self.ckpt_time = time.time_ns()
         policy_logits_pool, string_mapping, mapping = self.sample(policy_logits_pool, string_mapping,
                                                                    mappings, config.NUM_SAMPLES)
+        self.data["sample 1"][0] += time.time_ns() - self.ckpt_time 
+        self.data["sample 1"][1] += 1 
+        self.data["sample 1"][2] = self.data["sample 1"][0]/self.data["sample 1"][1]
 
         # less than 0.0001 seconds
         # Setup specialised roots datastructures, format: env_nums, action_space_size, num_simulations
@@ -116,15 +125,23 @@ class MCTS:
             last_action = np.asarray(last_action)
 
             # 0.026 to 0.064 seconds
+            self.ckpt_time = time.time_ns()
             network_output = self.network.recurrent_inference(np.asarray(hidden_states), last_action)
+            self.data["recurrent inference"][0] += time.time_ns() - self.ckpt_time 
+            self.data["recurrent inference"][1] += 1 
+            self.data["recurrent inference"][2] = self.data["recurrent inference"][0]/self.data["recurrent inference"][1]
 
             value_prefix_pool = np.array(network_output["value_logits"]).reshape(-1).tolist()
             value_pool = np.array(network_output["value"]).reshape(-1).tolist()
 
             # 0.002 seconds
+            self.ckpt_time = time.time_ns()
             policy_logits, _, mappings = self.sample(network_output["policy_logits"].numpy(),
                                                     self.default_string_mapping,self.default_byte_mapping,
                                                     config.NUM_SAMPLES)
+            self.data["sample 2"][0] += time.time_ns() - self.ckpt_time 
+            self.data["sample 2"][1] += 1 
+            self.data["sample 2"][2] = self.data["sample 2"][0]/self.data["sample 2"][1]
             # These assignments take 0.0001 > time
             # add nodes to the pool after each search
             hidden_states_nodes = network_output["hidden_state"]
@@ -137,8 +154,12 @@ class MCTS:
 
             # 0.001 seconds
             # backpropagation along the search path to update the attributes
+            self.ckpt_time = time.time_ns()
             tree.batch_back_propagate(hidden_state_index_x, discount, value_prefix_pool, value_pool, policy_logits,
                                       min_max_stats_lst, results, is_reset_lst, mappings)
+            self.data["backprop"][0] += time.time_ns() - self.ckpt_time 
+            self.data["backprop"][1] += 1 
+            self.data["backprop"][2] = self.data["backprop"][0]/self.data["backprop"][1]
 
     @staticmethod
     def select_action(visit_counts, temperature=1, deterministic=True):
@@ -250,11 +271,11 @@ class MCTS:
             local_logits = []
             local_string = []
             local_byte = []
-            num_pass_shop_actions = 6
-            refresh_level_actions = 2
+            num_pass_shop_actions = 6 if config.TARGETED_SAMPLES == True else 0 
+            refresh_level_actions = 2 if config.TARGETED_SAMPLES == True else 0 
             # Add samples for pass and the 5 shop options
             # Note that if there are not 5 available shop options, the sample here will be move options
-            for fixed_sample in range(0, 6):
+            for fixed_sample in range(0, num_pass_shop_actions):
                 if string_mapping[i][fixed_sample][0] == "0" or string_mapping[i][fixed_sample][0] == "1":
                     local_logits.append(policy_logits[i][fixed_sample])
                     local_string.append(string_mapping[i][fixed_sample])
@@ -263,7 +284,7 @@ class MCTS:
                     num_pass_shop_actions -= 1
             # Add samples for refresh and level
             # Note if either refresh or level is not available, the samples here will be move options
-            for last_sample in range(len(policy_logits[i]) - 2, len(policy_logits[i])):
+            for last_sample in range(len(policy_logits[i]) - refresh_level_actions, len(policy_logits[i])):
                 if string_mapping[i][last_sample][0] == "4" or string_mapping[i][last_sample][0] == "5":
                     local_logits.append(policy_logits[i][last_sample])
                     local_string.append(string_mapping[i][last_sample])
