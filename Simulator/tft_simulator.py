@@ -63,7 +63,7 @@ class TFT_Simulator(AECEnv):
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
-        self.infos = {agent: {} for agent in self.agents}
+        self.infos = {agent: {"player_won":False} for agent in self.agents}
         self.state = {agent: {} for agent in self.agents}
         self.observations = {agent: {} for agent in self.agents}
         self.actions = {agent: {} for agent in self.agents}
@@ -146,7 +146,7 @@ class TFT_Simulator(AECEnv):
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
 
-        self.infos = {agent: {} for agent in self.agents}
+        self.infos = {agent: {"player_won":False} for agent in self.agents}
         self.actions = {agent: {} for agent in self.agents}
 
         self.rewards = {agent: 0 for agent in self.agents}
@@ -183,7 +183,7 @@ class TFT_Simulator(AECEnv):
         # if we don't use this line, rewards will compound per step
         # (e.g. if player 1 gets reward in step 1, he will get rewards in steps 2-8)
         self._clear_rewards()
-        self.infos[self.agent_selection] = {}
+        self.infos[self.agent_selection] = {"player_won":False}
 
         self.terminations = {a: False for a in self.agents}
         self.truncations = {a: False for a in self.agents}
@@ -208,6 +208,7 @@ class TFT_Simulator(AECEnv):
                     # Anyone left alive (should only be 1 player unless time limit) wins the game
                     for player_id in self.agents:
                         if self.PLAYERS[player_id]:
+                            self.infos[player_id]["player_won"] = True
                             self.PLAYERS[player_id].won_game()
                             self.rewards[player_id] = 8.75
                             self._cumulative_rewards[player_id] = self.rewards[player_id]
@@ -216,6 +217,7 @@ class TFT_Simulator(AECEnv):
 
             _live_agents = self.agents[:]
             for k in self.kill_list:
+                self.infos[k]["player_won"] = False
                 self.terminations[k] = True
                 _live_agents.remove(k)
                 self.rewards[k] = (3 - len(_live_agents)) * 2.55 + 1.25
