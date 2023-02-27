@@ -131,6 +131,9 @@ class DataWorker(object):
             current_position = 7
             info = {player_id: {"player_won": False}
                     for player_id in env.possible_agents}
+            info2 = {i:{"traits used":0,"xp bought":0, "champs bought":0, "2* champs":0, "2* champ list":[]} for i in range(8)}
+            #position in log file: 
+            pos = 0
             # While the game is still going on.
             
             while not all(terminated.values()):
@@ -145,6 +148,26 @@ class DataWorker(object):
 
                 # Take that action within the environment and return all of our information for the next player
                 next_observation, reward, terminated, _, info = env.step(step_actions)
+
+                #get info about actions
+                log = open('log.txt','r')
+                for count,line in enumerate(log[pos:]):
+                    player_num = int(line[0])
+                    if "level = 2" in line:
+                        champ = line[line.index("champion "):].split(" ")[0]
+                        if champ not in info2[player_num]["2* champ list"]:
+                            info2[player_num]["2* champs"] += 1 
+                            info2[player_num]["2* champ list"].append(champ)
+                    elif "Spending gold on champion" in line:
+                        info2[player_num]["champs bought"] += 1 
+                    elif "Spending gold on exp" in line or "Spending gold on xp" in line: #check which one
+                        info2[player_num]["xp bought"] += 1
+                    
+                pos += count 
+
+                    
+                        
+
                 # store the action for MuZero
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
@@ -154,7 +177,7 @@ class DataWorker(object):
                         current_position -= 1
                         print(key)
                         del agents[key]
-
+            print(info2)
             for key, value in info.items():
                 if value["player_won"]:
                     self.placements[key] = 0
