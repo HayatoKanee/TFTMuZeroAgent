@@ -1,7 +1,7 @@
 import numpy as np
 
 # IMPORTANT: Change this value to the number of cpu cores you want to use (recommended 80% of cpu)
-NUM_CPUS = 28
+NUM_CPUS = 5
 
 # AI RELATED VALUES START HERE
 
@@ -38,10 +38,10 @@ N_HEAD_HIDDEN_LAYERS = 1
 
 ### TIME RELATED VALUES ###
 ACTIONS_PER_TURN = 15
-CONCURRENT_GAMES = 20
+CONCURRENT_GAMES = 5
 NUM_PLAYERS = 8 
 NUM_SAMPLES = 25
-NUM_SIMULATIONS = 50
+NUM_SIMULATIONS = 5
 SAMPLES_PER_PLAYER = 128
 UNROLL_STEPS = 5
 

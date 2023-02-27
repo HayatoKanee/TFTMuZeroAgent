@@ -4,7 +4,7 @@ import numpy as np
 from TestInterface.test_global_buffer import GlobalBuffer
 from Simulator.tft_simulator import parallel_env
 import time
-
+import os 
 from TestInterface.test_replay_wrapper import BufferWrapper
 
 from Simulator import utils
@@ -114,14 +114,14 @@ class DataWorker(object):
     def evaluate_agents(self, env , scale ):
         agents = {"player_" + str(r): MCTS(TFTNetwork())
                   for r in range(config.NUM_PLAYERS)}
-        agents["player_0"].network.tft_load_model(300+ 800*scale)
-        agents["player_1"].network.tft_load_model(500+ 800*scale)
-        agents["player_2"].network.tft_load_model(700+ 800*scale)
-        agents["player_3"].network.tft_load_model(900+ 800*scale)
-        agents["player_4"].network.tft_load_model(1100+ 800*scale)
-        agents["player_5"].network.tft_load_model(1300+ 800*scale)
-        agents["player_6"].network.tft_load_model(1500+ 800*scale)
-        agents["player_7"].network.tft_load_model(1800 + 800*scale)
+        agents["player_0"].network.tft_load_model(100)
+        agents["player_1"].network.tft_load_model(200)
+        agents["player_2"].network.tft_load_model(300)
+        agents["player_3"].network.tft_load_model(400)
+        agents["player_4"].network.tft_load_model(500)
+        agents["player_5"].network.tft_load_model(600)
+        agents["player_6"].network.tft_load_model(700)
+        agents["player_7"].network.tft_load_model(900)
         
         while True:
             # Reset the environment
@@ -137,7 +137,7 @@ class DataWorker(object):
             current_position = 7
             info = {player_id: {"player_won": False}
                     for player_id in env.possible_agents}
-            info2 = {i:{"traits used":0,"xp bought":0, "champs bought":0, "2* champs":0, "2* champ list":[]} for i in range(8)}
+            info2 = {i:{"traits used":0, "traits list":[],"xp bought":0, "champs bought":0, "2* champs":0, "2* champ list":[]} for i in range(8)}
             #position in log file: 
             pos = 0
             # While the game is still going on.
@@ -158,21 +158,26 @@ class DataWorker(object):
                 log = open('log.txt','r')
                 count = 1
                 for line in log:
-                    if count >= pos: 
-                        print(line)
-                        if line[0] != "E" and line[0] != "S":
-                            player_num = int(line[0])
-                            if "level = 2" in line:
-                                champ = line[line.index("champion "):].split(" ")[1]
-                                print(champ)
-                                print(line[line.index("champion "):].split(" "))
-                                if champ not in info2[player_num]["2* champ list"]:
+                    if count >= pos: #ensures code is ran only once
+                        if line[0] != "E" and line[0] != "S": # Eliminate END ROUND and START GAME line s
+                            player_num = int(line[0]) # first char is always player num
+                            if "level = 2" in line: # Tier 2 champs 
+                                champ = line[line.index("champion "):].split(" ")[1] #get actual champ name 
+
+                                if champ not in info2[player_num]["2* champ list"]: #avoid duplicates 
                                     info2[player_num]["2* champs"] += 1 
                                     info2[player_num]["2* champ list"].append(champ)
-                            elif "Spending gold on champion" in line:
+                            elif "Spending gold on champion" in line: 
                                 info2[player_num]["champs bought"] += 1 
-                            elif "exp" in line:
+                            elif "exp" in line: # think this is when xp is bought 
                                 info2[player_num]["xp bought"] += 1
+                            if "tier: " in line and "tier: 0" not in line: # checks traits same as lvl 2 champs 
+                                trait = line[:line.index("tier:")].split(" ")
+                                trait = trait[-3]
+                                if trait not in info2[player_num]["traits list"]:
+                                    info2[player_num]["traits used"] += 1
+                                    info2[player_num]["traits list"].append(trait)
+
                     count += 1 
                 pos = count     
 
@@ -186,16 +191,13 @@ class DataWorker(object):
                         # print(key)
                         del agents[key]
             print(info2)
+            print(self.placements)
             for key, value in info.items():
                 if value["player_won"]:
                     self.placements[key] = 0
             print(self.placements)
             break
-            # for key in self.placements.keys():
-            #     # Increment which position each model got.
-            #     self.placements[key][self.placements[key]] += 1
-            # print("recorded places {}".format(self.placements))
-            # self.rank += config.CONCURRENT_GAMES
+
 
 class AIInterface:
 

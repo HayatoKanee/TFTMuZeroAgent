@@ -66,7 +66,7 @@ class TFT_Simulator(AECEnv):
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
-        self.infos = {agent: {"state_empty": False} for agent in self.agents}
+        self.infos = {agent: {"state_empty": False, "player_won":False} for agent in self.agents}
         self.state = {agent: {} for agent in self.agents}
         self.observations = {agent: {} for agent in self.agents}
         self.actions = {agent: {} for agent in self.agents}
@@ -153,7 +153,7 @@ class TFT_Simulator(AECEnv):
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
 
-        self.infos = {agent: {"state_empty": False} for agent in self.agents}
+        self.infos = {agent: {"state_empty": False, "player_won":False} for agent in self.agents}
         self.actions = {agent: {} for agent in self.agents}
 
         self.rewards = {agent: 0 for agent in self.agents}
@@ -222,7 +222,7 @@ class TFT_Simulator(AECEnv):
 
                     self.terminations = {a: True for a in self.agents}
 
-                self.infos = {a: {"state_empty": False} for a in self.agents}
+                self.infos = {a: {"state_empty": False, "player_won": False} for a in self.agents}
 
             _live_agents = self.agents[:]
             for k in self.kill_list:
