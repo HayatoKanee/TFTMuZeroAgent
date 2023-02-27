@@ -108,8 +108,6 @@ class Network(tf.keras.Model):
                  prediction: tf.keras.Model
                  ) -> None:
         super().__init__(name='MuZeroAgent')
-        # temp
-        self.rec_count = 0
 
         self.config = config
         self.representation: tf.keras.Model = representation
@@ -193,8 +191,6 @@ class Network(tf.keras.Model):
             "policy_logits": policy_logits,
             "hidden_state": hidden_state
         }
-        self.rec_count += 1
-
         return outputs
 
     def rnn_to_flat(self, state):
@@ -226,11 +222,12 @@ class TFTNetwork(Network):
     def __init__(self) -> None:
         regularizer = tf.keras.regularizers.l2(l=1e-4)
 
-        # Representation model. Observation --> hidden state
+        # Representation model. Convert observation to hidden state
         rep_tensor_input = tf.keras.Input(shape=config.INPUT_TENSOR_SHAPE)
         tensor_x = Mlp(hidden_size=config.HIDDEN_STATE_SIZE / 2, name="rep_tensor")(rep_tensor_input)
         rep_output = tf.keras.layers.Dense(config.LAYER_HIDDEN_SIZE, activation='sigmoid', name='rep_tensor')(tensor_x)
 
+        # Using representation model from tf.keras.Model
         representation_model: tf.keras.Model = \
             tf.keras.Model(inputs=rep_tensor_input,
                            outputs=rep_output, name='observation_encodings')

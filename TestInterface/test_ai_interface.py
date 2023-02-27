@@ -1,16 +1,26 @@
 import config
 import datetime
-import tensorflow as tf
 import numpy as np
-import os
 from TestInterface.test_global_buffer import GlobalBuffer
 from Simulator.tft_simulator import parallel_env
-from Models import MuZero_trainer
+import time
+
 from TestInterface.test_replay_wrapper import BufferWrapper
-from Models.MuZero_agent_2 import TFTNetwork
-from Models.MCTS import MCTS
+
 from Simulator import utils
-import time 
+
+if config.ARCHITECTURE == 'Pytorch':
+    from Models.MCTS_torch import MCTS
+    from Models.MuZero_torch_agent import MuZeroNetwork as TFTNetwork
+    from Models import MuZero_torch_trainer as MuZero_trainer
+    from torch.utils.tensorboard import SummaryWriter
+else:
+    from Models.MCTS import MCTS
+    from Models.MuZero_keras_agent import TFTNetwork
+    from Models import MuZero_trainer
+    import tensorflow as tf
+
+
 
 class DataWorker(object):
     def __init__(self, rank):
@@ -45,8 +55,11 @@ class DataWorker(object):
             next_observation, reward, terminated, _, info = env.step(step_actions)
             # store the action for MuZero
             for i, key in enumerate(terminated.keys()):
-                # Store the information in a buffer to train on later.
-                buffers.store_replay_buffer(key, player_observation[0][i], storage_actions[i], reward[key], policy[i])
+                if not info[key]["state_empty"]:
+                    # Store the information in a buffer to train on later.
+                    buffers.store_replay_buffer(key, player_observation[0][i], storage_actions[i], reward[key],
+                                                policy[i])
+
             # Set up the observation for the next action
             player_observation = self.observation_to_input(next_observation)
 
@@ -62,7 +75,7 @@ class DataWorker(object):
         i = 0
         for player_id, terminate in terminated.items():
             if not terminate:
-                step_actions[player_id] = self.decode_action_to_one_hot(actions[i])
+                step_actions[player_id] = self.decode_action_to_one_hot(actions[i], player_id)
                 i += 1
         return step_actions
 
@@ -74,7 +87,9 @@ class DataWorker(object):
             masks.append(obs["mask"])
         return [np.asarray(tensors), masks]
 
-    def decode_action_to_one_hot(self, str_action):
+    def decode_action_to_one_hot(self, str_action, key):
+        # if key == "player_0":
+        #     print(str_action)
         num_items = str_action.count("_")
         split_action = str_action.split("_")
         element_list = [0, 0, 0]
@@ -88,8 +103,8 @@ class DataWorker(object):
             decoded_action[6:11] = utils.one_hot_encode_number(element_list[1], 5)
 
         if element_list[0] == 2:
-            decoded_action[6:44] = utils.one_hot_encode_number(element_list[1], 38) + utils.one_hot_encode_number(
-                element_list[2], 38)
+            decoded_action[6:44] = utils.one_hot_encode_number(element_list[1], 38) + \
+                                   utils.one_hot_encode_number(element_list[2], 38)
 
         if element_list[0] == 3:
             decoded_action[6:44] = utils.one_hot_encode_number(element_list[1], 38)
@@ -170,7 +185,6 @@ class DataWorker(object):
                         current_position -= 1
                         # print(key)
                         del agents[key]
-                
             print(info2)
             for key, value in info.items():
                 if value["player_won"]:
@@ -191,20 +205,24 @@ class AIInterface:
         self.ckpt = 0 
 
     def train_model(self, starting_train_step=0):
-        tf.config.optimizer.set_jit(True)
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
-        train_summary_writer = tf.summary.create_file_writer(train_log_dir)
         train_step = starting_train_step
 
         global_buffer = GlobalBuffer()
 
-        trainer = MuZero_trainer.Trainer()
-
         env = parallel_env()
         data_workers = DataWorker(0)
         global_agent = TFTNetwork()
-        # global_agent.tft_load_model(train_step)
+        global_agent.tft_load_model(train_step)
+
+        if config.ARCHITECTURE == "Pytorch":
+            trainer = MuZero_trainer.Trainer(global_agent)
+            train_summary_writer = SummaryWriter(train_log_dir)
+        else:
+            trainer = MuZero_trainer.Trainer()
+            tf.config.optimizer.set_jit(True)
+            train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
         while True:
             weights = global_agent.get_weights()
@@ -221,16 +239,6 @@ class AIInterface:
 
                 
                 train_step += 1
-                if train_step % 50 == 0:
-                    for i in self.data:
-                        print(self.data[i])
-                        self.data[i] = [0,0,0]
-                
-                    for x in data_workers.data:
-                        print(i.data[x])
-                        i.data[x] = [0,0,0]
-                    ## change config.NUM_SAMPLES here 
-                    ## change config.TARGETED_SAMPLES here
                 if train_step % 100 == 0:
                     global_agent.tft_save_model(train_step)
     
