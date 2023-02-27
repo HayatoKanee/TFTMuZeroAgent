@@ -60,6 +60,7 @@ class DataWorker(object):
 
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
+            
             for i in self.data:
                 self.data[i][0] += agent.data[i][0] 
                 self.data[i][1] += agent.data[i][1]

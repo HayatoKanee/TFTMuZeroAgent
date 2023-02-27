@@ -10,7 +10,7 @@ from TestInterface.test_replay_wrapper import BufferWrapper
 from Models.MuZero_agent_2 import TFTNetwork
 from Models.MCTS import MCTS
 from Simulator import utils
-
+import time 
 
 class DataWorker(object):
     def __init__(self, rank):
@@ -18,6 +18,8 @@ class DataWorker(object):
         self.prev_actions = [0 for _ in range(config.NUM_PLAYERS)]
         self.rank = rank
         self.placements = {}
+        self.data = {"sample 1":[0,0,0], "sample 2":[0,0,0], "initial inference":[0,0,0], "recurrent inference":[0,0,0], "backprop":[0,0,0]}
+
     # This is the main overarching gameplay method.
     # This is going to be implemented mostly in the game_round file under the AI side of things.
     def collect_gameplay_experience(self, env, buffers, weights):
@@ -48,6 +50,10 @@ class DataWorker(object):
             # Set up the observation for the next action
             player_observation = self.observation_to_input(next_observation)
 
+        for i in self.data:
+            self.data[i][0] += agent.data[i][0] 
+            self.data[i][1] += agent.data[i][1]
+            self.data[i][2] = self.data[i][0]/self.data[i][1]
         # buffers.rewardNorm()
         buffers.store_global_buffer()
 
@@ -90,18 +96,18 @@ class DataWorker(object):
             decoded_action[44:54] = utils.one_hot_encode_number(element_list[2], 10)
         return decoded_action
     
-    def evaluate_agents(self, env):
+    def evaluate_agents(self, env , scale ):
         agents = {"player_" + str(r): MCTS(TFTNetwork())
                   for r in range(config.NUM_PLAYERS)}
-        agents["player_1"].network.tft_load_model(100)
-        agents["player_2"].network.tft_load_model(100)
-        agents["player_3"].network.tft_load_model(200)
-        agents["player_4"].network.tft_load_model(200)
-        agents["player_5"].network.tft_load_model(300)
-        agents["player_6"].network.tft_load_model(300)
-        agents["player_7"].network.tft_load_model(400)
-        agents["player_0"].network.tft_load_model(400)
-
+        agents["player_0"].network.tft_load_model(300+ 800*scale)
+        agents["player_1"].network.tft_load_model(500+ 800*scale)
+        agents["player_2"].network.tft_load_model(700+ 800*scale)
+        agents["player_3"].network.tft_load_model(900+ 800*scale)
+        agents["player_4"].network.tft_load_model(1100+ 800*scale)
+        agents["player_5"].network.tft_load_model(1300+ 800*scale)
+        agents["player_6"].network.tft_load_model(1500+ 800*scale)
+        agents["player_7"].network.tft_load_model(1800 + 800*scale)
+        
         while True:
             # Reset the environment
             player_observation = env.reset()
@@ -116,6 +122,9 @@ class DataWorker(object):
             current_position = 7
             info = {player_id: {"player_won": False}
                     for player_id in env.possible_agents}
+            info2 = {i:{"traits used":0,"xp bought":0, "champs bought":0, "2* champs":0, "2* champ list":[]} for i in range(8)}
+            #position in log file: 
+            pos = 0
             # While the game is still going on.
             
             while not all(terminated.values()):
@@ -130,6 +139,28 @@ class DataWorker(object):
 
                 # Take that action within the environment and return all of our information for the next player
                 next_observation, reward, terminated, _, info = env.step(step_actions)
+                #get info about actions
+                log = open('log.txt','r')
+                count = 1
+                for line in log:
+                    if count >= pos: 
+                        print(line)
+                        if line[0] != "E" and line[0] != "S":
+                            player_num = int(line[0])
+                            if "level = 2" in line:
+                                champ = line[line.index("champion "):].split(" ")[1]
+                                print(champ)
+                                print(line[line.index("champion "):].split(" "))
+                                if champ not in info2[player_num]["2* champ list"]:
+                                    info2[player_num]["2* champs"] += 1 
+                                    info2[player_num]["2* champ list"].append(champ)
+                            elif "Spending gold on champion" in line:
+                                info2[player_num]["champs bought"] += 1 
+                            elif "exp" in line:
+                                info2[player_num]["xp bought"] += 1
+                    count += 1 
+                pos = count     
+
                 # store the action for MuZero
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
@@ -137,23 +168,27 @@ class DataWorker(object):
                     if terminate:
                         self.placements[key] = current_position
                         current_position -= 1
-                        print(key)
+                        # print(key)
                         del agents[key]
-
+                
+            print(info2)
             for key, value in info.items():
                 if value["player_won"]:
                     self.placements[key] = 0
             print(self.placements)
-            for key in self.placements.keys():
-                # Increment which position each model got.
-                self.placements[key][self.placements[key]] += 1
-            print("recorded places {}".format(self.placements))
-            self.rank += config.CONCURRENT_GAMES
+            break
+            # for key in self.placements.keys():
+            #     # Increment which position each model got.
+            #     self.placements[key][self.placements[key]] += 1
+            # print("recorded places {}".format(self.placements))
+            # self.rank += config.CONCURRENT_GAMES
 
 class AIInterface:
 
     def __init__(self):
         ...
+        self.data = {"1 episode":[0,0,0]}
+        self.ckpt = 0 
 
     def train_model(self, starting_train_step=0):
         tf.config.optimizer.set_jit(True)
@@ -178,16 +213,32 @@ class AIInterface:
 
             while global_buffer.available_batch():
                 gameplay_experience_batch = global_buffer.sample_batch()
+                self.ckpt = time.time_ns()
                 trainer.train_network(gameplay_experience_batch, global_agent, train_step, train_summary_writer)
+                self.data["1 episode"][0] += time.time_ns() - self.ckpt 
+                self.data["1 episode"][1] += 1 
+                self.data["1 episode"][2] = self.data["1 episode"][0]/self.data["1 episode"][1] 
+
+                
                 train_step += 1
-                if train_step % 10 == 0:
+                if train_step % 50 == 0:
+                    for i in self.data:
+                        print(self.data[i])
+                        self.data[i] = [0,0,0]
+                
+                    for x in data_workers.data:
+                        print(i.data[x])
+                        i.data[x] = [0,0,0]
+                    ## change config.NUM_SAMPLES here 
+                    ## change config.TARGETED_SAMPLES here
+                if train_step % 100 == 0:
                     global_agent.tft_save_model(train_step)
     
-    def evaluate(self):
+    def evaluate(self, scale):
         os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 
         env = parallel_env()
         data_workers = DataWorker(0)
-        data_workers.evaluate_agents(env)
+        data_workers.evaluate_agents(env, scale )
 

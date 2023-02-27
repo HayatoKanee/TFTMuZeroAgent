@@ -271,8 +271,12 @@ class MCTS:
             local_logits = []
             local_string = []
             local_byte = []
-            num_pass_shop_actions = 6 if config.TARGETED_SAMPLES == True else 0 
-            refresh_level_actions = 2 if config.TARGETED_SAMPLES == True else 0 
+            if config.TARGETED_SAMPLES == True:
+                num_pass_shop_actions = 6 
+                refresh_level_actions = 2
+            else:
+                num_pass_shop_actions = 0 
+                refresh_level_actions = 0
             # Add samples for pass and the 5 shop options
             # Note that if there are not 5 available shop options, the sample here will be move options
             for fixed_sample in range(0, num_pass_shop_actions):
