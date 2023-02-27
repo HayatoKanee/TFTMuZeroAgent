@@ -3,25 +3,34 @@ import config
 import datetime
 import ray
 import os
-import tensorflow as tf
+import copy
 import gymnasium as gym
 import numpy as np
 from storage import Storage
 from global_buffer import GlobalBuffer
 from Simulator.tft_simulator import TFT_Simulator, parallel_env, env as tft_env
 from ray.rllib.algorithms.ppo import PPOConfig
-from Models import MuZero_trainer
 from Models.replay_buffer_wrapper import BufferWrapper
-from Models.MuZero_agent_2 import TFTNetwork
-from Models.MCTS import MCTS
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
 from pettingzoo.test import parallel_api_test, api_test
 from Simulator import utils
 
+if config.ARCHITECTURE == 'Pytorch':
+    from Models.MCTS_torch import MCTS
+    from Models.MuZero_torch_agent import MuZeroNetwork as TFTNetwork
+    import Models.MuZero_torch_trainer as MuZero_trainer
+    from torch.utils.tensorboard import SummaryWriter
+    import torch
+else:
+    from Models.MCTS import MCTS
+    from Models import MuZero_trainer
+    from Models.MuZero_keras_agent import TFTNetwork
+    import tensorflow as tf
+
 
 # Can add scheduling_strategy="SPREAD" to ray.remote. Not sure if it makes any difference
-@ray.remote(num_gpus=0.2)
+@ray.remote(num_gpus=0.18)
 class DataWorker(object):
     def __init__(self, rank):
         self.agent_network = TFTNetwork()
@@ -54,9 +63,10 @@ class DataWorker(object):
                 next_observation, reward, terminated, _, info = env.step(step_actions)
                 # store the action for MuZero
                 for i, key in enumerate(terminated.keys()):
-                    # Store the information in a buffer to train on later.
-                    buffers.store_replay_buffer.remote(key, player_observation[0][i], storage_actions[i], reward[key],
-                                                       policy[i])
+                    if not info[key]["state_empty"]:
+                        # Store the information in a buffer to train on later.
+                        buffers.store_replay_buffer.remote(key, player_observation[0][i], storage_actions[i], reward[key],
+                                                           policy[i])
 
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
@@ -68,7 +78,7 @@ class DataWorker(object):
             buffers.store_global_buffer.remote()
             buffers = BufferWrapper.remote(global_buffer)
 
-            weights = ray.get(storage.get_model.remote())
+            weights = copy.deepcopy(ray.get(storage.get_model.remote()))
             agent.network.set_weights(weights)
             self.rank += config.CONCURRENT_GAMES
 
@@ -103,8 +113,8 @@ class DataWorker(object):
             decoded_action[6:11] = utils.one_hot_encode_number(element_list[1], 5)
 
         if element_list[0] == 2:
-            decoded_action[6:44] = utils.one_hot_encode_number(element_list[1], 38) + utils.one_hot_encode_number(
-                element_list[2], 38)
+            decoded_action[6:44] = utils.one_hot_encode_number(element_list[1], 38) + \
+                                   utils.one_hot_encode_number(element_list[2], 38)
 
         if element_list[0] == 3:
             decoded_action[6:44] = utils.one_hot_encode_number(element_list[1], 38)
@@ -189,21 +199,20 @@ class AIInterface:
         self.ckpt = 0 
 
     def train_model(self, starting_train_step=0):
-
         os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
         gpus = tf.config.list_physical_devices('GPU')
-        ray.init(num_gpus=len(gpus), num_cpus=28)
+        ray.init(num_gpus=len(gpus), num_cpus=config.NUM_CPUS)
 
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
         train_summary_writer = tf.summary.create_file_writer(train_log_dir)
         train_step = starting_train_step
         # tf.config.optimizer.set_jit(True)
+        storage = Storage.remote(train_step)
 
-        global_buffer = GlobalBuffer.remote()
+        global_buffer = GlobalBuffer.remote(storage)
 
         trainer = MuZero_trainer.Trainer()
-        storage = Storage.remote(train_step)
 
         env = parallel_env()
 
@@ -243,6 +252,50 @@ class AIInterface:
                             i.data[x] = [0,0,0]
                     ## change config.NUM_SAMPLES here 
                     ## change config.TARGETED_SAMPLES here
+                if train_step % 100 == 0:
+                    storage.set_model.remote()
+                    global_agent.tft_save_model(train_step)
+
+    def train_torch_model(self, starting_train_step=0):
+        gpus = torch.cuda.device_count()
+        ray.init(num_gpus=gpus, num_cpus=config.NUM_CPUS)
+
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
+        train_summary_writer = SummaryWriter(train_log_dir)
+        train_step = starting_train_step
+
+        storage = Storage.remote(train_step)
+        global_buffer = GlobalBuffer.remote(storage)
+
+        global_agent = TFTNetwork()
+        global_agent_weights = ray.get(storage.get_target_model.remote())
+        global_agent.set_weights(global_agent_weights)
+        global_agent.to("cuda")
+
+        trainer = MuZero_trainer.Trainer(global_agent)
+
+        env = parallel_env()
+
+        buffers = [BufferWrapper.remote(global_buffer)
+                   for _ in range(config.CONCURRENT_GAMES)]
+
+        weights = ray.get(storage.get_target_model.remote())
+        workers = []
+        data_workers = [DataWorker.remote(rank) for rank in range(config.CONCURRENT_GAMES)]
+        for i, worker in enumerate(data_workers):
+            workers.append(worker.collect_gameplay_experience.remote(env, buffers[i], global_buffer,
+                                                                     storage, weights))
+            time.sleep(2)
+        # ray.get(workers)
+
+        while True:
+            if ray.get(global_buffer.available_batch.remote()):
+                gameplay_experience_batch = ray.get(global_buffer.sample_batch.remote())
+                trainer.train_network(gameplay_experience_batch, global_agent, train_step, train_summary_writer)
+                storage.set_trainer_busy.remote(False)
+                storage.set_target_model.remote(global_agent.get_weights())
+                train_step += 1
                 if train_step % 100 == 0:
                     storage.set_model.remote()
                     global_agent.tft_save_model(train_step)
@@ -292,6 +345,7 @@ class AIInterface:
         algo.evaluate()  # 4. and evaluate it.
 
     def evaluate(self):
+        import tensorflow as tf
         os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
         gpus = tf.config.list_physical_devices('GPU')
         ray.init(num_gpus=len(gpus), num_cpus=16)
@@ -305,9 +359,7 @@ class AIInterface:
             workers.append(worker.evaluate_agents.remote(env, storage))
             time.sleep(1)
 
-        while True:
-            time.sleep(10000)
-            print("good luck getting past this")
+        ray.get(workers)
 
     def testEnv(self):
         raw_env = tft_env()
