@@ -137,7 +137,7 @@ class DataWorker(object):
             current_position = 7
             info = {player_id: {"player_won": False}
                     for player_id in env.possible_agents}
-            info2 = {i:{"traits used":0, "traits list":[],"xp bought":0, "champs bought":0, "2* champs":0, "2* champ list":[]} for i in range(8)}
+            info2 = {i:{"traits used":0, "traits list":[],"xp bought":0, "champs bought":0, "2* champs":0, "2* champ list":[], "3* champs":0, "3* champ list":[]} for i in range(8)}
             #position in log file: 
             pos = 0
             # While the game is still going on.
@@ -167,6 +167,12 @@ class DataWorker(object):
                                 if champ not in info2[player_num]["2* champ list"]: #avoid duplicates 
                                     info2[player_num]["2* champs"] += 1 
                                     info2[player_num]["2* champ list"].append(champ)
+                            if "level = 3" in line: # Tier 3 champs 
+                                champ = line[line.index("champion "):].split(" ")[1] #get actual champ name 
+
+                                if champ not in info2[player_num]["3* champ list"]: #avoid duplicates 
+                                    info2[player_num]["3* champs"] += 1 
+                                    info2[player_num]["3* champ list"].append(champ)
                             elif "Spending gold on champion" in line: 
                                 info2[player_num]["champs bought"] += 1 
                             elif "exp" in line: # think this is when xp is bought 
@@ -191,7 +197,6 @@ class DataWorker(object):
                         # print(key)
                         del agents[key]
             print(info2)
-            print(self.placements)
             for key, value in info.items():
                 if value["player_won"]:
                     self.placements[key] = 0
