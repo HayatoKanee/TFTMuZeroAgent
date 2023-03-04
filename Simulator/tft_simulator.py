@@ -194,6 +194,9 @@ class TFT_Simulator(AECEnv):
 
         self.terminations = {a: False for a in self.agents}
         self.truncations = {a: False for a in self.agents}
+        for agent in self.agents:
+            self.observations[agent] = self.game_observations[agent].observation(
+                agent, self.PLAYERS[agent], self.PLAYERS[agent].action_vector)
 
         # Also called in many environments but the line above this does the same thing but better
         # self._accumulate_rewards()
@@ -217,8 +220,9 @@ class TFT_Simulator(AECEnv):
                         if self.PLAYERS[player_id]:
                             self.infos[player_id]["player_won"] = True
                             self.PLAYERS[player_id].won_game()
-                            self.rewards[player_id] = 8.75
+                            self.rewards[player_id] = 300
                             self._cumulative_rewards[player_id] = self.rewards[player_id]
+                            self.PLAYERS[player_id] = None  # Without this the reward is reset
 
                     self.terminations = {a: True for a in self.agents}
 
@@ -229,7 +233,7 @@ class TFT_Simulator(AECEnv):
                 self.infos[k]["player_won"] = False
                 self.terminations[k] = True
                 _live_agents.remove(k)
-                self.rewards[k] = (3 - len(_live_agents)) * 2.5 + 1.25
+                self.rewards[k] = (3 - len(_live_agents)) * 50 - 25
                 self._cumulative_rewards[k] = self.rewards[k]
 
             if len(self.kill_list) > 0:

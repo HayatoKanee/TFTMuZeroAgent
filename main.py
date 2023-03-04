@@ -32,8 +32,7 @@ def main():
         #     print("Err")
 
     test_interface = TestInterface.AIInterface()
-    test_interface.evaluate(0)
-    # test_interface.train_model(starting_train_step=args.starting_episode)
+    test_interface.train_model(starting_train_step=args.starting_episode)
 
 
 if __name__ == "__main__":
