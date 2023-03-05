@@ -6,7 +6,7 @@ import torch
 import Models.MCTS_Util as util
 from typing import Dict
 from scipy.stats import entropy
-
+import copy 
 # EXPLANATION OF MCTS:
 """
 1. select leaf node with maximum value using method called UCB1 
@@ -26,15 +26,14 @@ class MCTS:
         self.num_actions = 0
         self.ckpt_time = time.time_ns()
         self.default_byte_mapping, self.default_string_mapping = util.create_default_mapping()
+        print("Ok")
 
     def policy(self, observation):
         with torch.no_grad():
             self.NUM_ALIVE = observation[0].shape[0]
 
             # 0.02 seconds
-            # self.ckpt_time = time.time_ns()
             network_output = self.network.initial_inference(observation[0])
-            # print("initial inference took: {}".format(time.time_ns() - self.ckpt_time))
 
             reward_pool = np.array(network_output["reward"]).reshape(-1).tolist()
             policy_logits = network_output["policy_logits"].detach().cpu().numpy()
@@ -47,7 +46,7 @@ class MCTS:
                       for i in range(self.NUM_ALIVE)]
 
             policy_logits_pool = self.add_exploration_noise(policy_logits_pool, noises)
-
+            # time.sleep(0.5)
             # 0.003 seconds
             policy_logits_pool, string_mapping, mappings, policy_sizes = \
                 self.sample(policy_logits_pool, string_mapping, mappings, config.NUM_SAMPLES)
@@ -104,7 +103,6 @@ class MCTS:
             # evaluation for leaf nodes, traversing across the tree and updating values
             hidden_state_index_x_lst, hidden_state_index_y_lst, last_action = \
                 tree.batch_traverse(roots_cpp, pb_c_base, pb_c_init, discount, min_max_stats_lst, results)
-
             num_states = len(hidden_state_index_x_lst)
             tensors_states = torch.empty((num_states, config.LAYER_HIDDEN_SIZE)).to('cuda')
 
@@ -124,20 +122,23 @@ class MCTS:
             value_pool = np.array(network_output["value"]).reshape(-1).tolist()
 
             # 0.002 seconds
-            policy_logits, _, mappings, _ = self.sample(network_output["policy_logits"].detach().cpu().numpy(),
-                                                        self.default_string_mapping, self.default_byte_mapping,
+
+            policy_logits, _, mappings, _ = self.sample(network_output["policy_logits"].cpu().numpy(),
+                                                        copy.deepcopy(self.default_string_mapping), copy.deepcopy(self.default_byte_mapping),
                                                         config.NUM_SAMPLES)
+
             # These assignments take 0.0001 > time
             # add nodes to the pool after each search
             hidden_states_nodes = network_output["hidden_state"]
             hidden_state_pool.append(hidden_states_nodes)
 
             hidden_state_index_x += 1
-
             # 0.001 seconds
             # backpropagation along the search path to update the attributes
+            
             tree.batch_back_propagate(hidden_state_index_x, discount, reward_pool, value_pool, policy_logits,
                                       min_max_stats_lst, results, mappings)
+            
 
     def add_exploration_noise(self, noise, policy_logits):
         exploration_fraction = config.ROOT_EXPLORATION_FRACTION
