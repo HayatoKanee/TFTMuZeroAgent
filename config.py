@@ -1,7 +1,7 @@
 import numpy as np
 
 # IMPORTANT: Change this value to the number of cpu cores you want to use (recommended 80% of cpu)
-NUM_CPUS = 28
+NUM_CPUS = 5
 
 # AI RELATED VALUES START HERE
 
@@ -52,6 +52,7 @@ LR_DECAY_FUNCTION = 0.1
 WEIGHT_DECAY = 1e-5
 REWARD_LOSS_SCALING = 0
 POLICY_LOSS_SCALING = 1
+TARGETED_SAMPLES = True
 # Putting this here so that we don't scale the policy by a multiple of 5
 # Because we calculate the loss for each of the 5 dimensions.
 # I'll add a mathematical way of generating these numbers later.

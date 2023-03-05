@@ -30,6 +30,7 @@ class DataWorker(object):
         self.agent_network = TFTNetwork()
         self.rank = rank
         self.ckpt_time = time.time_ns()
+        self.data = {"sample 1":[0,0,0], "sample 2":[0,0,0], "initial inference":[0,0,0], "recurrent inference":[0,0,0], "backprop":[0,0,0]}
 
     # This is the main overarching gameplay method.
     # This is going to be implemented mostly in the game_round file under the AI side of things.
@@ -63,7 +64,11 @@ class DataWorker(object):
 
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
-
+            
+            for i in self.data:
+                self.data[i][0] += agent.data[i][0] 
+                self.data[i][1] += agent.data[i][1]
+                self.data[i][2] = self.data[i][0]/self.data[i][1]
             # buffers.rewardNorm.remote()
             buffers.store_global_buffer.remote()
             buffers = BufferWrapper.remote(global_buffer)
@@ -185,6 +190,8 @@ class AIInterface:
 
     def __init__(self):
         ...
+        self.data = {"1 episode":[0,0,0]}
+        self.ckpt = 0 
 
     def train_torch_model(self, starting_train_step=0):
         gpus = torch.cuda.device_count()

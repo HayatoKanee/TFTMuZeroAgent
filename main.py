@@ -24,6 +24,11 @@ def main():
     # interface.collect_dummy_data()
     # interface.testEnv()
     # interface.PPO_algorithm()
+    while True:
+        test_interface = TestInterface.AIInterface()
+        test_interface.evaluate(0)
+        # except:
+        #     print("Err")
 
     # test_interface = TestInterface.AIInterface()
     # test_interface.train_model(starting_train_step=args.starting_episode)

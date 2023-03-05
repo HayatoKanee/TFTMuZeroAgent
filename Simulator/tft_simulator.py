@@ -66,7 +66,7 @@ class TFT_Simulator(AECEnv):
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
-        self.infos = {agent: {"state_empty": False} for agent in self.agents}
+        self.infos = {agent: {"state_empty": False, "player_won":False} for agent in self.agents}
         self.state = {agent: {} for agent in self.agents}
         self.observations = {agent: {} for agent in self.agents}
         self.actions = {agent: {} for agent in self.agents}
@@ -153,7 +153,7 @@ class TFT_Simulator(AECEnv):
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
 
-        self.infos = {agent: {"state_empty": False} for agent in self.agents}
+        self.infos = {agent: {"state_empty": False, "player_won":False} for agent in self.agents}
         self.actions = {agent: {} for agent in self.agents}
 
         self.rewards = {agent: 0 for agent in self.agents}
@@ -218,6 +218,7 @@ class TFT_Simulator(AECEnv):
                     # Anyone left alive (should only be 1 player unless time limit) wins the game
                     for player_id in self.agents:
                         if self.PLAYERS[player_id]:
+                            self.infos[player_id]["player_won"] = True
                             self.PLAYERS[player_id].won_game()
                             self.rewards[player_id] = 8.75
                             self._cumulative_rewards[player_id] = self.rewards[player_id]
@@ -225,10 +226,11 @@ class TFT_Simulator(AECEnv):
 
                     self.terminations = {a: True for a in self.agents}
 
-                self.infos = {a: {"state_empty": False} for a in self.agents}
+                self.infos = {a: {"state_empty": False, "player_won": False} for a in self.agents}
 
             _live_agents = self.agents[:]
             for k in self.kill_list:
+                self.infos[k]["player_won"] = False
                 self.terminations[k] = True
                 _live_agents.remove(k)
                 self.rewards[k] = (3 - len(_live_agents)) * 2.5 - 1.25
