@@ -108,13 +108,13 @@ class DataWorker(object):
         agents = {"player_" + str(r): MCTS(TFTNetwork())
                   for r in range(config.NUM_PLAYERS)}
         agents["player_0"].network.tft_load_model(100)
-        agents["player_1"].network.tft_load_model(200)
-        agents["player_2"].network.tft_load_model(300)
-        agents["player_3"].network.tft_load_model(400)
-        agents["player_4"].network.tft_load_model(500)
-        agents["player_5"].network.tft_load_model(600)
-        agents["player_6"].network.tft_load_model(700)
-        agents["player_7"].network.tft_load_model(900)
+        agents["player_1"].network.tft_load_model(1600)
+        agents["player_2"].network.tft_load_model(1900)
+        agents["player_3"].network.tft_load_model(1900)
+        agents["player_4"].network.tft_load_model(2200)
+        agents["player_5"].network.tft_load_model(2200)
+        agents["player_6"].network.tft_load_model(2500)
+        agents["player_7"].network.tft_load_model(2500)
         
         while True:
             # Reset the environment
@@ -139,7 +139,7 @@ class DataWorker(object):
                 # Ask our model for an action and policy
                 actions = []
                 for i,key in enumerate(agents):
-                    action, _ = agents[key].policy([np.asarray([player_observation[0][i]]), [player_observation[1][i]]])
+                    action, _, _ = agents[key].policy([np.asarray([player_observation[0][i]]), [player_observation[1][i]]])
                     actions.append(action)
                 actions = [i[0] for i in actions]
 
@@ -194,7 +194,7 @@ class DataWorker(object):
                 if value["player_won"]:
                     self.placements[key] = 0
             print(self.placements)
-            break
+            return(info2)
 
 
 class AIInterface:
