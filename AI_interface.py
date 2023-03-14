@@ -22,9 +22,11 @@ import Models.MuZero_torch_trainer as MuZero_trainer
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-
-# Can add scheduling_strategy="SPREAD" to ray.remote. Not sure if it makes any difference
-@ray.remote(num_gpus=0.18)
+'''
+Data workers are the "workers" or threads that collect game play experience. 
+Can add scheduling_strategy="SPREAD" to ray.remote. Not sure if it makes any difference
+'''
+@ray.remote(num_gpus=0.16)
 class DataWorker(object):
     def __init__(self, rank):
         self.agent_network = TFTNetwork()
@@ -32,8 +34,22 @@ class DataWorker(object):
         self.ckpt_time = time.time_ns()
         self.data = {"sample 1":[0,0,0], "sample 2":[0,0,0], "initial inference":[0,0,0], "recurrent inference":[0,0,0], "backprop":[0,0,0]}
 
-    # This is the main overarching gameplay method.
-    # This is going to be implemented mostly in the game_round file under the AI side of things.
+    '''
+    Description -
+        Each worker runs one full game and will restart after the game finishes. At the end of the game, 
+        it will fetch a new agent. 
+    Inputs -   
+        env 
+            A parallel environment of our tft simulator. This is the game that the worker interacts with.
+        buffers
+            One buffer wrapper that holds a series of buffers that we store all information required to train in.
+        global_buffer
+            A buffer that all the individual game buffers send their information to.
+        storage
+            An object that stores global information like the weights of the global model and current training progress
+        weights
+            Weights of the initial model for the agent to play the game with.
+    '''
     def collect_gameplay_experience(self, env, buffers, global_buffer, storage, weights):
         self.agent_network.set_weights(weights)
         agent = MCTS(self.agent_network)
@@ -77,6 +93,19 @@ class DataWorker(object):
             agent.network.set_weights(weights)
             self.rank += config.CONCURRENT_GAMES
 
+    '''
+    Description -
+        Turns the actions from a format that is sent back from the model to a format that is usable by the environment.
+        We check for any new dead agents in this method as well.
+    Inputs
+        terminated
+            A dictionary of player_ids and booleans that tell us if a player can execute an action or not.
+        actions
+            The set of actions returned from the model in a list of strings format
+    Returns
+        step_actions
+            A dictionary of player_ids and actions usable by the environment.
+    '''
     def getStepActions(self, terminated, actions):
         step_actions = {}
         i = 0
@@ -86,6 +115,10 @@ class DataWorker(object):
                 i += 1
         return step_actions
 
+    '''
+    Description -
+        Turns a dictionary of player observations into a list of list format that the model can use.
+    '''
     def observation_to_input(self, observation):
         tensors = []
         masks = []
@@ -94,6 +127,11 @@ class DataWorker(object):
             masks.append(obs["mask"])
         return [np.asarray(tensors), masks]
 
+    '''
+    Description -
+        Turns a string action into a series of one_hot lists that can be used in the step_function.
+        More specifics on what every list means can be found in the step_function.
+    '''
     def decode_action_to_one_hot(self, str_action):
         num_items = str_action.count("_")
         split_action = str_action.split("_")
@@ -116,21 +154,14 @@ class DataWorker(object):
             decoded_action[44:54] = utils.one_hot_encode_number(element_list[2], 10)
         return decoded_action
 
-    def collect_dummy_data(self):
-        env = gym.make("TFT_Set4-v0", env_config={})
-        while True:
-            _, _ = env.reset()
-            terminated = False
-            t = time.time_ns()
-            while not terminated:
-                # agent policy that uses the observation and info
-                action = np.random.randint(
-                    low=0, high=[10, 5, 9, 10, 7, 4, 7, 4], size=[8, 8])
-                self.prev_actions = action
-                observation_list, rewards, terminated, truncated, info = env.step(
-                    action)
-            print("A game just finished in time {}".format(time.time_ns() - t))
-
+    '''
+    Description -
+        Loads in a set of agents from checkpoints of the users choice to play against each other. These agents all have
+        their own policy function and are not required to be the same model. This method is used for evaluating the
+        skill level of the current agent and to see how well our agents are training. Metrics from this method are 
+        stored in the storage class because this is the data worker side so there are intended to be multiple copies
+        of this method running at once. 
+    '''
     def evaluate_agents(self, env, storage):
         agents = {"player_" + str(r): MCTS(TFTNetwork())
                   for r in range(config.NUM_PLAYERS)}
@@ -193,6 +224,9 @@ class AIInterface:
         self.data = {"1 episode":[0,0,0]}
         self.ckpt = 0 
 
+    '''
+    Global train model method. This is what gets called from main.
+    '''
     def train_torch_model(self, starting_train_step=0):
         gpus = torch.cuda.device_count()
         ray.init(num_gpus=gpus, num_cpus=config.NUM_CPUS)
@@ -237,6 +271,10 @@ class AIInterface:
                     storage.set_model.remote()
                     global_agent.tft_save_model(train_step)
 
+    '''
+    Method used for testing the simulator. It does not call any AI and generates random actions from numpy. Intended
+    to test how fast the simulator is and if there are any bugs that can be caught via multiple runs.
+    '''
     def collect_dummy_data(self):
         env = parallel_env()
         while True:
@@ -254,6 +292,9 @@ class AIInterface:
                 observation_list, rewards, terminated, truncated, info = env.step(action)
             print("A game just finished in time {}".format(time.time_ns() - t))
 
+    '''
+    The PPO implementation for the TFT project. This is an alternative to our MuZero model.
+    '''
     def PPO_algorithm(self):
         # register our environment, we have no config parameters
         register_env('tft-set4-v0', lambda local_config: PettingZooEnv(self.env_creator(local_config)))
@@ -281,6 +322,9 @@ class AIInterface:
 
         algo.evaluate()  # 4. and evaluate it.
 
+    '''
+    The global side to the evaluator. Creates a set of workers to test a series of agents.
+    '''
     def evaluate(self):
         os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
         # gpus = tf.config.list_physical_devices('GPU')
@@ -297,14 +341,17 @@ class AIInterface:
 
         ray.get(workers)
 
+    '''
+    PettingZoo's api tests for the simulator.
+    '''
     def testEnv(self):
         raw_env = tft_env()
         api_test(raw_env, num_cycles=100000)
         local_env = parallel_env()
         parallel_api_test(local_env, num_cycles=100000)
 
-    # function looks stupid as is right now, but should remain this way
-    # for potential future abstractions
-
+    '''
+    Creates the TFT environment for the PPO model.
+    '''
     def env_creator(self, cfg):
         return TFT_Simulator(cfg)

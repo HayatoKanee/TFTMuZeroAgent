@@ -2,7 +2,7 @@ import config
 import collections
 import torch
 import numpy as np
-from Models.MCTS_Util import map_distribution_to_sample
+from Models.MCTS_Util import map_distribution_to_sample, action_str_to_idx, flatten_sample_set
 
 Prediction = collections.namedtuple(
     'Prediction',
@@ -39,14 +39,37 @@ class Trainer(object):
         observation, history, value_mask, reward_mask, policy_mask, value, reward, policy, sample_set = batch
         self.adjust_lr(train_step)
 
+        sample_set = action_str_to_idx(sample_set)
+
         self.optimizer.zero_grad()
 
         loss = self.compute_loss(agent, observation, history, value_mask, reward_mask, policy_mask,
                                  value, reward, policy, sample_set, train_step, summary_writer)
 
         loss = loss.mean()
+        samples = torch.zeros(config.ACTION_ENCODING_SIZE).cuda()
+        for i in flatten_sample_set(sample_set):
+            samples[i] += 1 
+
+                
+        def filter_grad(grad):
+            if len(grad.shape) == 1:
+                grad = grad * samples
+            else:
+                grad = grad * samples.unsqueeze(1)
+            grad = grad / (config.BATCH_SIZE * (config.UNROLL_STEPS + 1))
+            return grad
+
+
+        handle1 = self.global_agent.prediction_policy_network[2].weight.register_hook(lambda grad: filter_grad(grad))
+        handle2 = self.global_agent.prediction_policy_network[2].bias.register_hook(lambda grad: filter_grad(grad))
+
+
         loss.backward()
+
         self.optimizer.step()
+        handle1.remove()
+        handle2.remove()
 
         # storage.save_network(config.training_steps, network)\
 
@@ -75,10 +98,10 @@ class Trainer(object):
         # recurrent steps
         num_recurrent_steps = config.UNROLL_STEPS
         for rstep in range(num_recurrent_steps):
+            # 1.0 and 0.5 because we scale prior to the recurrent inference. 0.5 if scaled afterwards.
             hidden_state_gradient_scale = 1.0 if rstep == 0 else 0.5
             hidden_state = output["hidden_state"]
-            hidden_state.requires_grad_(True).register_hook(
-                lambda grad: self.scale_gradient(grad, hidden_state_gradient_scale))
+            hidden_state.requires_grad_(True).register_hook(lambda grad: grad * hidden_state_gradient_scale)
             output = agent.recurrent_inference(
                 hidden_state,
                 history[:, rstep],
@@ -108,17 +131,6 @@ class Trainer(object):
         def name_to_mask(name):
             return next(k for k in masks if k in name)
 
-        # This is more rigorous than the MuZero paper.
-        gradient_scales = {
-            k: torch.div(torch.tensor(1.0).to('cuda'),
-                         torch.maximum(torch.sum(m[:, 1:], -1).to('cuda'), torch.tensor(1).to('cuda')))
-            for k, m in masks.items()
-        }
-        gradient_scales = {
-            k: [torch.ones_like(s).to('cuda')] + [s] * (num_target_steps - 1)
-            for k, s in gradient_scales.items()
-        }
-
         target_reward_encoded, target_value_encoded = (torch.reshape(
             torch.tensor(enc.encode(torch.reshape(v, (-1,)).to('cpu'))).to('cuda'),
             (-1, num_target_steps,
@@ -137,12 +149,10 @@ class Trainer(object):
                 else torch.tensor(prediction.reward_logits).to('cuda')
             reward_logits = reward_logits.requires_grad_(True)
             policy_logits = prediction.policy_logits
-            # policy_logits = prediction.policy_logits.to('cuda') if torch.is_tensor(prediction.policy_logits) \
-                # else torch.tensor(prediction.policy_logits).to('cuda')
 
             value_loss = (-target_value_encoded[:, tstep] *
                           torch.nn.LogSoftmax(dim=-1)(value_logits)).sum(-1)
-            value_loss.register_hook(lambda grad: self.scale_gradient(grad, gradient_scales['value'][tstep]))
+            value_loss.register_hook(lambda grad: grad / config.UNROLL_STEPS)
             
             accs['value_loss'].append(
               value_loss
@@ -150,56 +160,37 @@ class Trainer(object):
             
             reward_loss = (-target_reward_encoded[:, tstep] *
                            torch.nn.LogSoftmax(dim=-1)(reward_logits)).sum(-1)
-            reward_loss.register_hook(lambda grad: self.scale_gradient(grad, gradient_scales['reward'][tstep]))
+            reward_loss.register_hook(lambda grad: grad / config.UNROLL_STEPS)
 
             accs['reward_loss'].append(
               reward_loss
             )
-            # predictions.policy_logits is (actiondims, batch) 
-            # target_policy is (batch,unrollsteps+1,action_dims)
 
             # future ticket
             # entropy_loss = -tfd.Independent(tfd.Categorical(
             #     logits = logits, dtype=float), reinterpreted_batch_ndims=1).entropy()
             #     * config.policy_loss_entropy_regularizer
+
+            # predictions.policy_logits is (actiondims, batch)
+            # target_policy is (batch,unrollsteps+1,action_dims)
             policy_loss = []
             for i in range(len(target_policy)):
-              policy_loss.append((-torch.tensor(target_policy[i][tstep]).cuda() * torch.nn.LogSoftmax(dim=-1)(policy_logits[i])).sum(-1))
+                policy_loss.append((-torch.tensor(target_policy[i][tstep]).cuda() *
+                                    torch.nn.LogSoftmax(dim=-1)(policy_logits[i])).sum(-1))
             policy_loss = torch.stack(policy_loss)
 
-            # policy_loss = (-(
-            #   [torch.tensor(target_policy[i][tstep]) * torch.nn.LogSoftmax(dim=-1)(policy_logits[i])
-            #   for i in range(len(target_policy)])
-            # )).sum(-1).requires_grad_(True)
+            policy_loss.register_hook(lambda grad: grad / config.UNROLL_STEPS)
 
-            # policy_loss = (-torch.tensor([i[tstep] for i in target_policy]).to('cuda') *
-            #                torch.nn.LogSoftmax(dim=-1)(policy_logits)).sum(-1).requires_grad_(True)
+            accs['policy_loss'].append(policy_loss)
 
-            policy_loss.register_hook(lambda grad: self.scale_gradient(grad, gradient_scales['policy'][tstep]))
-
-            accs['policy_loss'].append(
-              policy_loss
-            )
-
-            accs['value_diff'].append(
-                torch.abs(torch.squeeze(value) - target_value[:, tstep]))
-            accs['reward_diff'].append(
-                torch.abs(torch.squeeze(reward) - target_reward[:, tstep]))
-
-            # accs['policy_acc'].append(
-            #     tf.keras.metrics.categorical_accuracy(
-            #         target_policy[:, tstep],
-            #         tf.nn.softmax(prediction.policy_logits, axis=-1)))
+            accs['value_diff'].append(torch.abs(torch.squeeze(value) - target_value[:, tstep]))
+            accs['reward_diff'].append(torch.abs(torch.squeeze(reward) - target_reward[:, tstep]))
 
             accs['value'].append(torch.squeeze(value))
             accs['reward'].append(torch.squeeze(reward))
-            # accs['action'].append(
-            #     tf.cast(tf.argmax(prediction.policy_logits, -1), tf.float32))
 
             accs['target_value'].append(target_value[:, tstep])
             accs['target_reward'].append(target_reward[:, tstep])
-            # accs['target_action'].append(
-            #     tf.cast(tf.argmax(target_policy[:, tstep], -1), tf.float32))
 
         accs = {k: torch.stack(v, -1) * masks[name_to_mask(k)] for k, v in accs.items()}
 
