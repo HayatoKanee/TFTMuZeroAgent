@@ -20,16 +20,17 @@ def main():
                         help='Episode number to start the training. Used for loading checkpoints, '
                              'disables loading if = 0')
     args = parser.parse_args()
+
+    # interface = AI_interface.AIInterface()
+    # interface.train_torch_model(starting_train_step=args.starting_episode)
     # interface.collect_dummy_data()
     # interface.testEnv()
     # interface.PPO_algorithm()
     while True:
-        try:
-            test_interface = TestInterface.AIInterface()
-            test_interface.evaluate(0)
-        except:
-            # print("OK")
-            pass
+        
+        test_interface = AI_interface.AIInterface()
+        test_interface.evaluate()
+        
     test_interface.train_model(starting_train_step=args.starting_episode)
 
 
