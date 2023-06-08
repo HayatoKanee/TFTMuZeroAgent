@@ -67,30 +67,22 @@ class MuZeroNetwork(AbstractNetwork):
         # self.representation_network = mlp(config.OBSERVATION_SIZE, [config.LAYER_HIDDEN_SIZE] *
         #                                   config.N_HEAD_HIDDEN_LAYERS, config.HIDDEN_STATE_SIZE)
 
-        self.representation_network = ResNetwork(28, [256] * 16, 1, config.HIDDEN_STATE_SIZE)
+        self.representation_network = RepresentationNetwork()
 
         # self.action_encodings = mlp(config.ACTION_CONCAT_SIZE, [config.LAYER_HIDDEN_SIZE] * 0,
         #                             config.HIDDEN_STATE_SIZE)
         
-        self.dynamics_hidden_state_network = torch.nn.LSTM(input_size = 81, 
-                          num_layers = config.NUM_RNN_CELLS, hidden_size = config.LSTM_SIZE, batch_first = True).cuda()
+        self.dynamics_network = DynamicsNetwork()
 
-        self.dynamics_reward_network = mlp(config.HIDDEN_STATE_SIZE, [1] *
-                                           1, self.full_support_size)
-
-        self.prediction_policy_network = MultiMlp(config.HIDDEN_STATE_SIZE, [config.LAYER_HIDDEN_SIZE] * 
-                                                  config.N_HEAD_HIDDEN_LAYERS,config.POLICY_HEAD_SIZES)
-
-        self.prediction_value_network = mlp(config.HIDDEN_STATE_SIZE, [config.LAYER_HIDDEN_SIZE] *
-                                            config.N_HEAD_HIDDEN_LAYERS, self.full_support_size)
+        self.prediction_network = PredictionNetwork()
 
         self.value_encoder = ValueEncoder(*tuple(map(inverse_contractive_mapping, (-300., 300.))), 0)
 
         self.reward_encoder = ValueEncoder(*tuple(map(inverse_contractive_mapping, (-300., 300.))), 0)
 
     def prediction(self, encoded_state):
-        policy_logits = self.prediction_policy_network(encoded_state)
-        value = self.prediction_value_network(encoded_state)
+        policy, value = self.prediction_network(encoded_state)
+        policy_logits = policy
         return policy_logits, value
 
     def representation(self, observation):
@@ -123,22 +115,17 @@ class MuZeroNetwork(AbstractNetwork):
         inputs = inputs[:, None, :]
         new_nested_states = []
 
-        # for cell, states in zip(self.dynamics_hidden_state_network, lstm_state):
-        #     inputs, new_states = cell(inputs, states)
-        #     new_nested_states.append([inputs, new_states])
         h0, c0 = list(zip(*lstm_state))
-        # print("RESULT", c0[0].size())
-        # print("RESULT", c0[1].size())
-        # print("RESULT", c0[2].size())
-        # print("RESULT", c0[3].size())
-        # print("PASS", inputs.size())
-        _, new_nested_states = self.dynamics_hidden_state_network(inputs, (torch.stack(h0, dim=0), torch.stack(c0, dim=0)))
+
+        state, reward_hidden, value_prefix = self.dynamics_network(inputs, (torch.stack(h0, dim=0), torch.stack(c0, dim=0)))
+
+        # _, new_nested_states = self.dynamics_hidden_state_network(inputs, (torch.stack(h0, dim=0), torch.stack(c0, dim=0))) #guess state = new_states
 
         # print("SIZE", new_nested_states.size())
         next_hidden_state = self.rnn_to_flat(new_nested_states)  # (8, 1024) ##DOUBLE CHECK THIS
 
         # print("NEXT HIDDEN", next_hidden_state.size())
-        reward = self.dynamics_reward_network(next_hidden_state)
+        reward = reward_hidden
 
         # Scale encoded state between [0, 1] (See paper appendix Training)
         min_next_hidden_state = next_hidden_state.min(1, keepdim=True)[0]
@@ -209,47 +196,47 @@ class MuZeroNetwork(AbstractNetwork):
         }
         return outputs
 
-def mlp(input_size,
-        layer_sizes,
-        output_size,
-        output_activation=torch.nn.Identity,
-        activation=torch.nn.LeakyReLU):
+def mlp(
+    input_size,
+    layer_sizes,
+    output_size,
+    output_activation=torch.nn.Identity,
+    activation=torch.nn.ReLU,
+    momentum=0.1,
+    init_zero=False,
+):
+    """MLP layers
+    Parameters
+    ----------
+    input_size: int
+        dim of inputs
+    layer_sizes: list
+        dim of hidden layers
+    output_size: int
+        dim of outputs
+    init_zero: bool
+        zero initialization for the last layer (including w and b).
+        This can provide stable zero outputs in the beginning.
+    """
     sizes = [input_size] + layer_sizes + [output_size]
     layers = []
     for i in range(len(sizes) - 1):
-        act = activation if i < len(sizes) - 2 else output_activation
-        layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), act()]
-    return torch.nn.Sequential(*layers).cuda()
+        if i < len(sizes) - 2:
+            act = activation
+            layers += [torch.nn.Linear(sizes[i], sizes[i + 1]),
+                       torch.nn.BatchNorm1d(sizes[i + 1], momentum=momentum),
+                       act()]
+        else:
+            act = output_activation
+            layers += [torch.nn.Linear(sizes[i], sizes[i + 1]),
+                       act()]
 
+    if init_zero:
+        layers[-2].weight.data.fill_(0)
+        layers[-2].bias.data.fill_(0)
 
-class ResNetwork(torch.nn.Module):
-    def __init__(self, input_size, layer_sizes, output_size, encoding_size) -> torch.nn.Module:
-        super().__init__()
+    return torch.nn.Sequential(*layers)
 
-        self.resnet = resnet(input_size, layer_sizes, output_size)
-        self.fc1 = torch.nn.Linear(output_size, encoding_size)
-
-    def forward(self, x):
-        x = self.resnet(x)
-        #Maybe 1x1 conv here
-        torch.flatten(x, 1)
-        x = self.fc1(x)
-        return x
-
-    def __call__(self, x):
-        return self.forward(x)
-
-def resnet(input_size,
-        layer_sizes,
-        output_size):
-    sizes = [input_size] + layer_sizes + [output_size]
-    layers = []
-    for i in range(1, len(sizes) - 1):
-        layers += [ResLayer(sizes[i], sizes[i + 1])]
-    
-    return torch.nn.Sequential(*layers).cuda()
-
-# Cursed? Idk
 # Linear(input, layer_size) -> RELU
 #      -> Linear -> Identity -> 0
 #      -> Linear -> Identity -> 1
@@ -327,29 +314,312 @@ def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> torch.nn.Conv2d
     """1x1 convolution"""
     return torch.nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
-class ResLayer(torch.nn.Module):
-    def __init__(self, input_channels, n_kernels) -> torch.nn.Module:
-        super().__init__()
+def conv3x3(in_channels, out_channels, stride=1):
+    return torch.nn.Conv2d(
+        in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
+    )
 
-        self.conv1 = torch.nn.Conv2d(3, 256, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = torch.nn.BatchNorm2d(256)
-        self.conv2 = torch.nn.Conv2d(3, 256, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = torch.nn.BatchNorm2d(256)
-        self.relu = torch.nn.ReLU(inplace=True)
+# Residual block
+class ResidualBlock(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, downsample=None, stride=1, momentum=0.1):
+        super().__init__()
+        self.conv1 = conv3x3(in_channels, out_channels, stride)
+        self.bn1 = torch.nn.BatchNorm2d(out_channels, momentum=momentum)
+        self.conv2 = conv3x3(out_channels, out_channels)
+        self.bn2 = torch.nn.BatchNorm2d(out_channels, momentum=momentum)
+        self.downsample = downsample
 
     def forward(self, x):
-        input = x
+        identity = x
+
         out = self.conv1(x)
         out = self.bn1(out)
-        out = self.relu(out)
+        out = torch.nn.functional.relu(out)
+
         out = self.conv2(out)
         out = self.bn2(out)
-        out += input
 
-        return self.relu(out)
+        if self.downsample is not None:
+            identity = self.downsample(x)
 
-    def __call__(self, x):
-        return self.forward(x)
+        out += identity
+        out = torch.nn.functional.relu(out)
+        return out
+
+class DownSample(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, momentum=0.1):
+        super().__init__()
+        self.conv1 = torch.nn.Conv2d(
+            in_channels,
+            out_channels // 2,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False,
+        )
+        self.bn1 = torch.nn.BatchNorm2d(out_channels // 2, momentum=momentum)
+        self.resblocks1 = torch.nn.ModuleList(
+            [ResidualBlock(out_channels // 2, out_channels // 2, momentum=momentum) for _ in range(1)]
+        )
+        self.conv2 = torch.nn.Conv2d(
+            out_channels // 2,
+            out_channels,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False,
+        )
+        self.downsample_block = ResidualBlock(out_channels // 2, out_channels, momentum=momentum, stride=2, downsample=self.conv2)
+        self.resblocks2 = torch.nn.ModuleList(
+            [ResidualBlock(out_channels, out_channels, momentum=momentum) for _ in range(1)]
+        )
+        self.pooling1 = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+        self.resblocks3 = torch.nn.ModuleList(
+            [ResidualBlock(out_channels, out_channels, momentum=momentum) for _ in range(1)]
+        )
+        self.pooling2 = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = torch.nn.functional.relu(x)
+        for block in self.resblocks1:
+            x = block(x)
+        x = self.downsample_block(x)
+        for block in self.resblocks2:
+            x = block(x)
+        x = self.pooling1(x)
+        for block in self.resblocks3:
+            x = block(x)
+        x = self.pooling2(x)
+        return x
+
+# Encode the observations into hidden states
+class RepresentationNetwork(torch.nn.Module):
+    def __init__(
+        self,
+        observation_shape,
+        num_blocks,
+        num_channels,
+        downsample,
+        momentum=0.1,
+    ):
+        """Representation network
+        Parameters
+        ----------
+        observation_shape: tuple or list
+            shape of observations: [C, W, H]
+        num_blocks: int
+            number of res blocks
+        num_channels: int
+            channels of hidden states
+        downsample: bool
+            True -> do downsampling for observations. (For board games, do not need)
+        """
+        super().__init__()
+        self.downsample = downsample
+        if self.downsample:
+            self.downsample_net = DownSample(
+                observation_shape[0],
+                num_channels,
+            )
+        self.conv = conv3x3(
+            observation_shape[0],
+            num_channels,
+        )
+        self.bn = torch.nn.BatchNorm2d(num_channels, momentum=momentum)
+        self.resblocks = torch.nn.ModuleList(
+            [ResidualBlock(num_channels, num_channels, momentum=momentum) for _ in range(num_blocks)]
+        )
+
+    def forward(self, x):
+        if self.downsample:
+            x = self.downsample_net(x)
+        else:
+            x = self.conv(x)
+            x = self.bn(x)
+            x = torch.nn.functional.relu(x)
+
+        for block in self.resblocks:
+            x = block(x)
+        return x
+
+    def get_param_mean(self):
+        mean = []
+        for name, param in self.named_parameters():
+            mean += np.abs(param.detach().cpu().numpy().reshape(-1)).tolist()
+        mean = sum(mean) / len(mean)
+        return mean
+
+# Predict next hidden states given current states and actions
+class DynamicsNetwork(torch.nn.Module):
+    def __init__(
+        self,
+        num_blocks,
+        num_channels,
+        reduced_channels_reward,
+        fc_reward_layers,
+        full_support_size,
+        block_output_size_reward,
+        lstm_hidden_size=64,
+        momentum=0.1,
+        init_zero=False,
+    ):
+        """Dynamics network
+        Parameters
+        ----------
+        num_blocks: int
+            number of res blocks
+        num_channels: int
+            channels of hidden states
+        fc_reward_layers: list
+            hidden layers of the reward prediction head (MLP head)
+        full_support_size: int
+            dim of reward output
+        block_output_size_reward: int
+            dim of flatten hidden states
+        lstm_hidden_size: int
+            dim of lstm hidden
+        init_zero: bool
+            True -> zero initialization for the last layer of reward mlp
+        """
+        super().__init__()
+        self.num_channels = num_channels
+        self.lstm_hidden_size = lstm_hidden_size
+
+        self.conv = conv3x3(num_channels, num_channels - 1)
+        self.bn = torch.nn.BatchNorm2d(num_channels - 1, momentum=momentum)
+        self.resblocks = torch.nn.ModuleList(
+            [ResidualBlock(num_channels - 1, num_channels - 1, momentum=momentum) for _ in range(num_blocks)]
+        )
+
+        self.reward_resblocks = torch.nn.ModuleList(
+            [ResidualBlock(num_channels - 1, num_channels - 1, momentum=momentum) for _ in range(num_blocks)]
+        )
+
+        self.conv1x1_reward = torch.nn.Conv2d(num_channels - 1, reduced_channels_reward, 1)
+        self.bn_reward = torch.nn.BatchNorm2d(reduced_channels_reward, momentum=momentum)
+        self.block_output_size_reward = block_output_size_reward
+        self.lstm = torch.nn.LSTM(input_size=self.block_output_size_reward, hidden_size=self.lstm_hidden_size)
+        self.bn_value_prefix = torch.nn.BatchNorm1d(self.lstm_hidden_size, momentum=momentum)
+        self.fc = mlp(self.lstm_hidden_size, fc_reward_layers, full_support_size, init_zero=init_zero, momentum=momentum)
+
+    def forward(self, x, reward_hidden):
+        state = x[:,:-1,:,:]
+        x = self.conv(x)
+        x = self.bn(x)
+
+        x += state
+        x = torch.nn.functional.relu(x)
+
+        for block in self.resblocks:
+            x = block(x)
+        state = x
+
+        x = self.conv1x1_reward(x)
+        x = self.bn_reward(x)
+        x = torch.nn.functional.relu(x)
+
+        x = x.view(-1, self.block_output_size_reward).unsqueeze(0)
+        value_prefix, reward_hidden = self.lstm(x, reward_hidden)
+        value_prefix = value_prefix.squeeze(0)
+        value_prefix = self.bn_value_prefix(value_prefix)
+        value_prefix = torch.nn.functional.relu(value_prefix)
+        value_prefix = self.fc(value_prefix)
+
+        return state, reward_hidden, value_prefix
+
+    def get_dynamic_mean(self):
+        dynamic_mean = np.abs(self.conv.weight.detach().cpu().numpy().reshape(-1)).tolist()
+
+        for block in self.resblocks:
+            for name, param in block.named_parameters():
+                dynamic_mean += np.abs(param.detach().cpu().numpy().reshape(-1)).tolist()
+        dynamic_mean = sum(dynamic_mean) / len(dynamic_mean)
+        return dynamic_mean
+
+    def get_reward_mean(self):
+        reward_w_dist = self.conv1x1_reward.weight.detach().cpu().numpy().reshape(-1)
+
+        for name, param in self.fc.named_parameters():
+            temp_weights = param.detach().cpu().numpy().reshape(-1)
+            reward_w_dist = np.concatenate((reward_w_dist, temp_weights))
+        reward_mean = np.abs(reward_w_dist).mean()
+        return reward_w_dist, reward_mean
+
+# predict the value and policy given hidden states
+class PredictionNetwork(torch.nn.Module):
+    def __init__(
+        self,
+        action_space_size,
+        num_blocks,
+        num_channels,
+        reduced_channels_value,
+        reduced_channels_policy,
+        fc_value_layers,
+        fc_policy_layers,
+        full_support_size,
+        block_output_size_value,
+        block_output_size_policy,
+        momentum=0.1,
+        init_zero=False,
+    ):
+        """Prediction network
+        Parameters
+        ----------
+        action_space_size: int
+            action space
+        num_blocks: int
+            number of res blocks
+        num_channels: int
+            channels of hidden states
+        reduced_channels_value: int
+            channels of value head
+        reduced_channels_policy: int
+            channels of policy head
+        fc_value_layers: list
+            hidden layers of the value prediction head (MLP head)
+        fc_policy_layers: list
+            hidden layers of the policy prediction head (MLP head)
+        full_support_size: int
+            dim of value output
+        block_output_size_value: int
+            dim of flatten hidden states
+        block_output_size_policy: int
+            dim of flatten hidden states
+        init_zero: bool
+            True -> zero initialization for the last layer of value/policy mlp
+        """
+        super().__init__()
+        self.resblocks = torch.nn.ModuleList(
+            [ResidualBlock(num_channels, num_channels, momentum=momentum) for _ in range(num_blocks)]
+        )
+
+        self.conv1x1_value = torch.nn.Conv2d(num_channels, reduced_channels_value, 1)
+        self.conv1x1_policy = torch.nn.Conv2d(num_channels, reduced_channels_policy, 1)
+        self.bn_value = torch.nn.BatchNorm2d(reduced_channels_value, momentum=momentum)
+        self.bn_policy = torch.nn.BatchNorm2d(reduced_channels_policy, momentum=momentum)
+        self.block_output_size_value = block_output_size_value
+        self.block_output_size_policy = block_output_size_policy
+        self.fc_value = mlp(self.block_output_size_value, fc_value_layers, full_support_size, init_zero=init_zero, momentum=momentum)
+        self.fc_policy = mlp(self.block_output_size_policy, fc_policy_layers, action_space_size, init_zero=init_zero, momentum=momentum)
+
+    def forward(self, x):
+        for block in self.resblocks:
+            x = block(x)
+        value = self.conv1x1_value(x)
+        value = self.bn_value(value)
+        value = torch.nn.functional.relu(value)
+
+        policy = self.conv1x1_policy(x)
+        policy = self.bn_policy(policy)
+        policy = torch.nn.functional.relu(policy)
+
+        value = value.view(-1, self.block_output_size_value)
+        policy = policy.view(-1, self.block_output_size_policy)
+        value = self.fc_value(value)
+        policy = self.fc_policy(policy)
+        return policy, value
 
 class ValueEncoder:
     """Encoder for reward and value targets from Appendix of MuZero Paper."""
