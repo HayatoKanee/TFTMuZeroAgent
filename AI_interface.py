@@ -36,8 +36,13 @@ Can add scheduling_strategy="SPREAD" to ray.remote. Not sure if it makes any dif
 class DataWorker(object):
     def __init__(self, rank):
         self.agent_network = TFTNetwork()
+        self.past_network = TFTNetwork()
+        self.past_version = [False for _ in range(config.NUM_PLAYERS)]
+        self.live_game = True
         self.rank = rank
         self.ckpt_time = time.time_ns()
+        self.prob = 1
+        self.past_episode = 0
 
     '''
     Description -
@@ -57,7 +62,6 @@ class DataWorker(object):
     '''
     def collect_gameplay_experience(self, env, buffers, global_buffer, storage, weights):
         self.agent_network.set_weights(weights)
-        agent = MCTS(self.agent_network)
         while True:
             # Reset the environment
             player_observation, info = env.reset()
@@ -69,8 +73,8 @@ class DataWorker(object):
 
             # While the game is still going on.
             while not all(terminated.values()):
-                # Ask our model for an action and policy
-                actions, policy, string_samples = agent.policy(player_observation[:2])
+                # Ask our model for an action and policy. Use on normal case or if we only have current versions left
+                actions, policy, string_samples = self.model_call(player_observation)
 
                 storage_actions = utils.decode_action(actions)
                 step_actions = self.getStepActions(terminated, storage_actions)
@@ -80,9 +84,20 @@ class DataWorker(object):
                 # store the action for MuZero
                 for i, key in enumerate(terminated.keys()):
                     if not info[key]["state_empty"]:
-                        # Store the information in a buffer to train on later.
-                        buffers.store_replay_buffer.remote(key, player_observation[0][i], storage_actions[i],
-                                                           reward[key], policy[i], string_samples[i])
+                        if not self.past_version[i]:
+                            # Store the information in a buffer to train on later.
+                            buffers.store_replay_buffer.remote(key, player_observation[0][i], storage_actions[i],
+                                                               reward[key], policy[i], string_samples[i])
+
+                offset = 0
+                for i, terminate in enumerate(terminated.values):
+                    # Add some comments about how to update the values
+                    if terminate:
+                        del self.past_version[i - offset]
+                        offset += 1
+
+                    if not any(self.past_version) and len(terminated) == 2:
+                        storage.update_checkpoint_score(self.past_episode, self.prob)
 
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
@@ -91,8 +106,17 @@ class DataWorker(object):
             buffers.store_global_buffer.remote()
             buffers = BufferWrapper.remote(global_buffer)
 
+            # Might want to get rid of the hard constant 0.8 for something that can be adjusted in the future
+            self.live_game = np.random.rand() <= 0.8
+            if not self.live_game:
+                past_weights, self.past_episode, self.prob = storage.sample_past_model()
+                self.past_network.set_weights(past_weights)
+
+            # So if I do not have a live game, I need to sample a past model
+            # Which means I need to create a list within the storage and sample from that.
+            # All the probability distributions will be within the storage class as well.
             weights = copy.deepcopy(ray.get(storage.get_model.remote()))
-            agent.network.set_weights(weights)
+            self.agent_network.set_weights(weights)
             self.rank += config.CONCURRENT_GAMES
 
     '''
@@ -163,6 +187,67 @@ class DataWorker(object):
         if element_list[0] == 4:
             decoded_action[7:44] = utils.one_hot_encode_number(element_list[1], 37)
         return decoded_action
+
+    def model_call(self, player_observation):
+        if self.live_game or not any(self.past_version):
+            actions, policy, string_samples = self.agent_network.policy(player_observation[:2])
+        # if all of our agents are past versions. (Should exceedingly rarely come here)
+        elif all(self.past_version):
+            actions, policy, string_samples = self.past_network.policy(player_observation[:2])
+        else:
+            actions, policy, string_samples = self.mixed_model_call(player_observation)
+        return actions, policy, string_samples
+
+    def mixed_model_call(self, player_observation):
+        # I need to send the observations that are part of the past players to one vector
+        # and send the ones that are part of the live players to another vector
+        # Problem comes if I want to do multiple different versions in a game.
+        # I could limit it to one past verison. That is probably going to be fine for our purposes
+        # Note for later that the current implementation is only going to be good for one past version
+        # For our purposes, lets just start with half of the agents being false.
+
+        # Start by updating the array to only include alive agents
+        # offset here in the case of multiple dead players in the same turn
+        offset = 0
+        for i, terminate in enumerate(terminated.values()):
+            if terminate:
+                del self.past_version[i - offset]
+                offset += 1
+
+        # Now that I have the array for the past versions down to only the remaining players
+        # Separate the observation.
+        live_agent_observations = []
+        past_agent_observations = []
+        live_agent_masks = []
+        past_agent_masks = []
+
+        for i, past_version in enumerate(self.past_version):
+            if not past_version:
+                live_agent_observations.append(player_observation[0, i])
+                live_agent_masks.append(player_observation[1, i])
+            else:
+                past_agent_observations.append(player_observation[0, i])
+                past_agent_masks.append(player_observation[1, i])
+        live_observation = [live_agent_observations, live_agent_masks]
+        past_observation = [past_agent_observations, past_agent_masks]
+        live_actions, live_policy, live_string_samples = agent.policy(live_observation)
+        past_actions, past_policy, past_string_samples = past_agent.policy(past_observation)
+        actions = [None] * len(self.past_version)
+        policy = [None] * len(self.past_version)
+        string_samples = [None] * len(self.past_version)
+        counter_live, counter_past = 0, 0
+        for i, past_version in enumerate(self.past_version):
+            if past_version:
+                actions[i] = past_actions[counter_past]
+                policy[i] = past_policy[counter_past]
+                string_samples[i] = past_string_samples[counter_past]
+                counter_past += 1
+            else:
+                actions[i] = live_actions[counter_live]
+                policy[i] = live_policy[counter_live]
+                string_samples[i] = live_string_samples[counter_live]
+                counter_live += 1
+        return actions, policy, string_samples
 
     '''
     Description -

@@ -20,6 +20,7 @@ else:
 
 from torch.utils.tensorboard import SummaryWriter
 
+
 class DataWorker(object):
     def __init__(self, rank):
         self.agent_network = TFTNetwork()

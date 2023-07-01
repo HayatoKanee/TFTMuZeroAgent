@@ -121,7 +121,8 @@ class AfterstatePredictionNetwork(nn.Module):
         policy_logits = self.afterstate_policy_network(afterstate)
         value = self.afterstate_value_network(afterstate)
         return policy_logits, value
-    
+
+
 class DynamicsNetwork(nn.Module):
     def __init__(self):
         super().__init__()
@@ -151,6 +152,7 @@ class DynamicsNetwork(nn.Module):
         
         return scale_hidden_state(next_hidden_state), reward
 
+
 # VQ-VAE   
 class Encoder(nn.Module):
     def __init__(self):
@@ -166,16 +168,17 @@ class Encoder(nn.Module):
         
         return one_hot_code, chance_embeddings
 
+
 class StochasticMuZeroNetwork(AbstractNetwork):
     def __init__(self):
         super().__init__()
         self.full_support_size = config.ENCODER_NUM_STEPS
 
-        self.representation= RepresentationNetwork()
+        self.representation = RepresentationNetwork()
 
-        self.afterstate_dynamics= AfterstateDynamicsNetwork()
+        self.afterstate_dynamics = AfterstateDynamicsNetwork()
 
-        self.afterstate_prediction= AfterstatePredictionNetwork()
+        self.afterstate_prediction = AfterstatePredictionNetwork()
 
         self.dynamics = DynamicsNetwork()
 
@@ -246,6 +249,7 @@ class StochasticMuZeroNetwork(AbstractNetwork):
             "hidden_state": next_hidden_state
         }
         return outputs
+
 
 def mlp(
         input_size,
