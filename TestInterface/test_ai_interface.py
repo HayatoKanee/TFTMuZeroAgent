@@ -70,7 +70,7 @@ class DataWorker(object):
         tensors = []
         masks = []
         for obs in observation.values():
-            tensors.append(obs["tensor"])
+            tensors.append(obs["observation"])
             masks.append(obs["mask"])
         return [np.asarray(tensors), masks]
 

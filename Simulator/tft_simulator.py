@@ -86,7 +86,7 @@ class TFT_Simulator(AECEnv):
                 self.agents,
                 [
                     Dict({
-                        "tensor": Box(low=0, high=10.0, shape=(config.OBSERVATION_SIZE,), dtype=np.float64),
+                        "observation": Box(low=0.0, high=10.0, shape=(config.OBSERVATION_SIZE,), dtype=np.float64),
                         "mask": Tuple((MultiDiscrete(np.ones(6) * 2, dtype=np.int8), 
                                        MultiDiscrete(np.ones(5) * 2, dtype=np.int8),
                                        MultiDiscrete(np.ones(28) * 2, dtype=np.int8),
@@ -168,7 +168,7 @@ class TFT_Simulator(AECEnv):
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
 
         self.observations = {agent: self.game_observations[agent].observation(
-            agent, self.PLAYERS[agent], self.PLAYERS[agent].action_vector) for agent in self.agents}
+            agent, self.PLAYERS[agent]) for agent in self.agents}
 
         self._agent_selector.reinit(self.agents)
         self.agent_selection = self._agent_selector.next()
@@ -204,7 +204,7 @@ class TFT_Simulator(AECEnv):
         self.truncations = {a: False for a in self.agents}
         for agent in self.agents:
             self.observations[agent] = self.game_observations[agent].observation(
-                agent, self.PLAYERS[agent], self.PLAYERS[agent].action_vector)
+                agent, self.PLAYERS[agent])
 
         # Also called in many environments but the line above this does the same thing but better
         # self._accumulate_rewards()
@@ -249,7 +249,7 @@ class TFT_Simulator(AECEnv):
 
                     for agent in _live_agents:
                         self.observations[agent] = self.game_observations[agent].observation(
-                            agent, self.PLAYERS[agent], self.PLAYERS[agent].action_vector)
+                            agent, self.PLAYERS[agent])
 
             for player_id in self.PLAYERS:
                 if self.PLAYERS[player_id]:

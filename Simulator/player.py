@@ -552,7 +552,7 @@ class Player:
         exp_to_level = 0
         if self.level < self.max_level:
             exp_to_level = self.level_costs[self.level] - self.exp
-        self.player_private_vector[4] = exp_to_level
+        self.player_private_vector[4] = exp_to_level / self.level_costs[self.level]
         self.player_private_vector[5] = max(self.win_streak, self.loss_streak)
         if len(self.match_history) > 2:
             self.player_private_vector[6] = self.match_history[-3]
@@ -566,12 +566,12 @@ class Player:
                 if ("player_" + str(x - 9)) in self.opponent_options:
                     self.player_private_vector[x] = self.opponent_options["player_" + str(x - 9)] / 20
                 else:
-                    self.player_private_vector[x] = -1
+                    self.player_private_vector[x] = 0
             elif (x - 0) > self.player_num:
                 if ("player_" + str(x - 9)) in self.opponent_options:
                     self.player_private_vector[x - 1] = self.opponent_options["player_" + str(x - 9)] / 20
                 else:
-                    self.player_private_vector[x - 1] = -1
+                    self.player_private_vector[x - 1] = 0
 
         # if gold < 4 or already max level, do not allow to level
         if self.level == self.max_level or self.gold < 4:

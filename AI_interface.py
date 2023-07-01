@@ -121,7 +121,7 @@ class DataWorker(object):
         masks = []
         keys = []
         for key, obs in observation.items():
-            tensors.append(obs["tensor"])
+            tensors.append(obs["observation"])
             masks.append(obs["mask"])
             keys.append(key)
         return [np.asarray(tensors), masks, keys]

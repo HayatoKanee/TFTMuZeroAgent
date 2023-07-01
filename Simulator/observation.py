@@ -32,18 +32,15 @@ class Observation:
     Outputs     - A dictionary with a tensor field (input to the representation network) and a mask for legal actions
     """
     def observation(self, player_id, player, action_vector=np.array([])):
-        # Fetch the shop vector and game comp vector
-        shop_vector = self.shop_vector
-        game_state_vector = self.game_comp_vector
         # Concatenate all vector based player information
-        game_state_tensor = np.concatenate([shop_vector,
+        game_state_tensor = np.concatenate([self.shop_vector,
                                             player.bench_vector,
                                             player.chosen_vector,
                                             player.item_vector,
                                             player.player_public_vector,
                                             player.player_private_vector,
                                             player.board_vector,
-                                            game_state_vector,
+                                            self.game_comp_vector,
                                             action_vector,
                                             np.expand_dims(self.turn_since_update, axis=-1)], axis=-1)
 
@@ -85,7 +82,7 @@ class Observation:
         # Used to help the model know how outdated it's information on other players is.
         # Also helps with ensuring that two observations with the same board and bench are not equal.
         self.turn_since_update += 0.01
-        return {"tensor": total_tensor_observation, "mask": mask}
+        return {"observation": total_tensor_observation, "mask": mask}
 
     """
     Description - Generates the other players observation from the perspective of the current player.

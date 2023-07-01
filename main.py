@@ -21,7 +21,7 @@ def main():
     interface = AI_interface.AIInterface()
     # interface.train_torch_model(starting_train_step=args.starting_episode)
     # interface.collect_dummy_data()
-    # interface.testEnv()
+    interface.testEnv()
     # interface.stable_baselines_PPO()
     # interface.PPO_algorithm()
     #
