@@ -13,6 +13,7 @@ class ReplayBuffer:
         self.string_samples = []
         self.action_history = []
         self.g_buffer = g_buffer
+        self.ending_position = -1
 
     def reset(self):
         self.gameplay_experiences = []
@@ -44,13 +45,19 @@ class ReplayBuffer:
     def set_reward_sequence(self, rewards):
         self.rewards = rewards
 
+    def get_ending_position(self):
+        return self.ending_position
+
+    def set_ending_position(self, ending_position):
+        self.ending_position = ending_position
+
     def store_global_buffer(self):
         # Putting this if case here in case the episode length is less than 72 which is 8 more than the batch size
         # In general, we are having episodes of 200 or so but the minimum possible is close to 20
         samples_per_player = config.SAMPLES_PER_PLAYER \
             if (len(self.gameplay_experiences) - config.UNROLL_STEPS) > config.SAMPLES_PER_PLAYER \
             else len(self.gameplay_experiences) - config.UNROLL_STEPS
-        if samples_per_player > 0:
+        if samples_per_player > 0 and (self.ending_position == 8 or self.ending_position == 1):
             # config.UNROLL_STEPS because I don't want to sample the very end of the range
             samples = random.sample(range(0, len(self.gameplay_experiences) - config.UNROLL_STEPS), samples_per_player)
             num_steps = len(self.gameplay_experiences)

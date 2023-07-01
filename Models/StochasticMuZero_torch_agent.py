@@ -43,6 +43,7 @@ class AbstractNetwork(nn.Module):
     # Renaming as to not override built-in functions
     def tft_load_model(self, episode):
         path = f'./Checkpoints/checkpoint_{episode}'
+
         if os.path.isfile(path):
             self.load_state_dict(torch.load(path))
             self.eval()

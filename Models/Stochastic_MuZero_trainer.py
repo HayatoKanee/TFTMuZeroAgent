@@ -43,8 +43,9 @@ class Trainer:
         torch.autograd.set_detect_anomaly(True)
 
         predictions = self.compute_forward(observation, action_history)
-        
-        sample_set, target_policy = split_batch(sample_set, target_policy)  # [unroll_steps, num_dims, [(batch_size, dim) ...] ]
+
+        # [unroll_steps, num_dims, [(batch_size, dim) ...] ]
+        sample_set, target_policy = split_batch(sample_set, target_policy)
         
         self.compute_loss(predictions, target_value, target_reward, target_policy, sample_set)
         

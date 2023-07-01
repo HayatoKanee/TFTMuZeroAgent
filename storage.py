@@ -20,6 +20,7 @@ class Storage:
         self.trainer_busy = False
         self.checkpoint_list = np.array([], dtype=object)
         self.max_q_value = 1
+        self.store_initial_checkpoint(episode)
 
     def get_model(self):
         return self.checkpoint_list[-1].get_model()
@@ -54,21 +55,22 @@ class Storage:
 
     def store_initial_checkpoint(self, episode):
         base_checkpoint = Checkpoint(episode, 1)
-        self.checkpoint_list.append(base_checkpoint)
+        # TODO: Verify if this is super inefficient or if there is a better way.
+        self.checkpoint_list = np.append(self.checkpoint_list, [base_checkpoint])
 
     def store_checkpoint(self, episode):
         checkpoint = Checkpoint(episode, self.max_q_value)
-        self.checkpoint_list.append(checkpoint)
+        self.checkpoint_list = np.append(self.checkpoint_list, [checkpoint])
+
+        # Update this later to delete the model with the lowest value.
+        # Want something so it doesn't expand infinitely
+        if len(self.checkpoint_list > 1000):
+            self.checkpoint_list = self.checkpoint_list[1:]
 
     def update_checkpoint_score(self, episode, prob):
         checkpoint = next((x for x in self.checkpoint_list if x.epoch == episode), None)
         if checkpoint:
             checkpoint.update_q_score(self.checkpoint_list[-1].epoch, prob)
-
-        # Update this later to delete the model with the lowest value.
-        # Want something so it doesn't expand infinitely
-        if len(self.checkpoint_list > 1000):
-            del self.checkpoint_list[0]
 
     def sample_past_model(self):
         # List of probabilities for each past model
@@ -79,8 +81,8 @@ class Storage:
 
         # Populate the lists
         for checkpoint in self.checkpoint_list:
-            probabilities.append(np.exp(checkpoint.q_score))
-            checkpoints.append(checkpoint.epoch)
+            probabilities = np.append(probabilities, [np.exp(checkpoint.q_score)])
+            checkpoints = np.append(checkpoints, [checkpoint.epoch])
 
         # Normalize the probabilities to create a probability distribution
         probabilities = probabilities / np.linalg.norm(probabilities)
@@ -92,7 +94,7 @@ class Storage:
         index = np.where(checkpoints == choice)[0][0]
 
         # Return the model and the probability
-        return self.checkpoint_list[choice].get_model(), choice, probabilities[index]
+        return self.checkpoint_list[index].get_model(), choice, probabilities[index]
 
 
 # Going to be adding a bunch of new methods here.
