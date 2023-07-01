@@ -48,7 +48,7 @@ CONCURRENT_GAMES = 20
 NUM_PLAYERS = 8 
 NUM_SAMPLES = 30  # Normal is 25, can be anywhere from 5 to 300
 NUM_SIMULATIONS = 25
-SAMPLES_PER_PLAYER = 128  # Normal is 128
+SAMPLES_PER_PLAYER = 256  # Normal is 128
 UNROLL_STEPS = 5
 
 ## Stochastic MuZero

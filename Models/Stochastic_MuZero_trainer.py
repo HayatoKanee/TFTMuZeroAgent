@@ -157,7 +157,7 @@ class Trainer:
         target_encoded = encoder.encode(target_flattened)
         target_reshaped = torch.reshape(
             target_encoded,
-            (-1, target.shape[-1] , int(encoder.num_steps))
+            (-1, target.shape[-1], int(encoder.num_steps))
         )
         return target_reshaped
     
