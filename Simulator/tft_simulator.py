@@ -91,7 +91,14 @@ class TFT_Simulator(AECEnv):
                                        MultiDiscrete(np.ones(5) * 2, dtype=np.int8),
                                        MultiDiscrete(np.ones(28) * 2, dtype=np.int8),
                                        MultiDiscrete(np.ones(9) * 2, dtype=np.int8),
-                                       MultiDiscrete(np.ones(10) * 2, dtype=np.int8)))
+                                       MultiDiscrete(np.ones(10) * 2, dtype=np.int8),
+                                       MultiDiscrete(np.ones(3) * 2, dtype=np.int8),
+                                       MultiDiscrete(np.ones(37) * 2, dtype=np.int8),
+                                       MultiDiscrete(np.ones(37) * 2, dtype=np.int8),
+                                       MultiDiscrete(np.ones(10) * 2, dtype=np.int8),
+                                       MultiDiscrete(np.ones(28) * 2, dtype=np.int8),
+                                       MultiDiscrete(np.ones(28) * 2, dtype=np.int8),
+                                       ))
                     }) for _ in self.agents
                 ],
             )

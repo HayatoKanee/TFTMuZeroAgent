@@ -28,7 +28,7 @@ class DataWorker(object):
         self.agent_network.set_weights(weights)
         agent = MCTS(self.agent_network)
         # Reset the environment
-        player_observation = env.reset()
+        player_observation, info = env.reset()
         # This is here to make the input (1, observation_size) for initial_inference
         player_observation = self.observation_to_input(player_observation)
 

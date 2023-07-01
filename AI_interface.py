@@ -15,6 +15,7 @@ from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
 from pettingzoo.test import parallel_api_test, api_test
 from Simulator import utils
+from stable_baselines3 import PPO
 
 from Models.MCTS_torch import MCTS
 from Models.MuZero_torch_agent import MuZeroNetwork as TFTNetwork
@@ -321,6 +322,22 @@ class AIInterface:
             print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
 
         algo.evaluate()  # 4. and evaluate it.
+
+    def stable_baselines_PPO(self):
+        from stable_baselines3.common.evaluation import evaluate_policy
+        import supersuit as ss
+        env = ss.pettingzoo_env_to_vec_env_v1(parallel_env())
+        model = PPO('MlpPolicy', env, verbose=1)
+        # evaluate agent with no training
+        mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=10)
+        print(f"mean_reward:{mean_reward:.2f} +/- {std_reward}")
+              
+        # Train the agent for 10000 steps
+        model.learn(total_timesteps=10000)
+        model.save("ppo_tft")
+
+        mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=10)
+        print(f"mean_reward:{mean_reward:.2f} +/- {std_reward}")
 
     '''
     The global side to the evaluator. Creates a set of workers to test a series of agents.

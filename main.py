@@ -18,10 +18,11 @@ def main():
                              'disables loading if = 0')
     args = parser.parse_args()
 
-    # interface = AI_interface.AIInterface()
+    interface = AI_interface.AIInterface()
     # interface.train_torch_model(starting_train_step=args.starting_episode)
     # interface.collect_dummy_data()
     # interface.testEnv()
+    # interface.stable_baselines_PPO()
     # interface.PPO_algorithm()
     #
     test_interface = TestInterface.AIInterface()
