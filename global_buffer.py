@@ -3,6 +3,8 @@ import config
 import time
 import numpy as np
 from collections import deque
+from sys import getsizeof
+
 
 
 @ray.remote
@@ -53,8 +55,7 @@ class GlobalBuffer:
         queue_length = len(self.gameplay_experiences)
         if queue_length >= self.batch_size and not ray.get(self.storage_ptr.get_trainer_busy.remote()):
             self.storage_ptr.set_trainer_busy.remote(True)
-            print(queue_length)
+            print("len of the queue {} with size {}".format(queue_length, getsizeof(self.gameplay_experiences)))
             return True
         time.sleep(5)
-        print("GLOBAL_BUFFER_SIZE {}".format(len(self.gameplay_experiences)))
         return False

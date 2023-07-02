@@ -2,6 +2,7 @@ import ray
 import config
 import numpy as np
 from checkpoint import Checkpoint
+from sys import getsizeof
 if config.STOCHASTIC:
     from Models.StochasticMuZero_torch_agent import StochasticMuZeroNetwork as TFTNetwork
 else:
@@ -77,11 +78,14 @@ class Storage:
         print("UPDATED CHECKPOINT SCORE OF EPISODE {} TO {}".format(episode, checkpoint.q_score))
 
     def sample_past_model(self):
+        print("STARTING SAMPLE OF PAST MODEL")
         # List of probabilities for each past model
         probabilities = np.array([], dtype=np.float32)
 
         # List of checkpoint epochs, so we can load the right model
         checkpoints = np.array([], dtype=np.float32)
+
+        print("size of self.checkpoint_list {}".format(getsizeof(self.checkpoint_list)))
 
         # Populate the lists
         for checkpoint in self.checkpoint_list:
@@ -97,6 +101,7 @@ class Storage:
         # Find the index, so we can return the probability as well in case we need to update the value
         index = np.where(checkpoints == choice)[0][0]
 
+        print("SAMPLED PAST MODEL")
         # Return the model and the probability
         return self.checkpoint_list[index].get_model(), choice, probabilities[index]
 
