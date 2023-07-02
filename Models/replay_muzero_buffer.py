@@ -1,6 +1,7 @@
 import numpy as np
 import config
 import random
+import ray
 from global_buffer import GlobalBuffer
 from Models.MCTS_Util import split_sample_set
 
@@ -57,6 +58,7 @@ class ReplayBuffer:
         samples_per_player = config.SAMPLES_PER_PLAYER \
             if (len(self.gameplay_experiences) - config.UNROLL_STEPS) > config.SAMPLES_PER_PLAYER \
             else len(self.gameplay_experiences) - config.UNROLL_STEPS
+        print("THIS PLAYER GOT POSITION {} WITH SAMPLES {}".format(self.ending_position, samples_per_player))
         if samples_per_player > 0 and (self.ending_position > 6 or self.ending_position < 3):
             # config.UNROLL_STEPS because I don't want to sample the very end of the range
             samples = random.sample(range(0, len(self.gameplay_experiences) - config.UNROLL_STEPS), samples_per_player)
@@ -129,6 +131,8 @@ class ReplayBuffer:
                     sample_set[i] = split_mapping
                     policy_set[i] = split_policy
 
-                output_sample_set = [self.gameplay_experiences[sample:sample+config.UNROLL_STEPS + 1], action_set, value_mask_set, reward_mask_set,
+                output_sample_set = [self.gameplay_experiences[sample:sample+config.UNROLL_STEPS + 1],
+                                     action_set, value_mask_set, reward_mask_set,
                                      policy_mask_set, value_set, reward_set, policy_set, sample_set]
-                self.g_buffer.store_replay_sequence.remote(output_sample_set)
+                ray.get(self.g_buffer.store_replay_sequence.remote(output_sample_set))
+            print("FINISHED SENDING TO GLOBAL BUFFER")

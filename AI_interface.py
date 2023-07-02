@@ -44,6 +44,7 @@ class DataWorker(object):
         self.ckpt_time = time.time_ns()
         self.prob = 1
         self.past_episode = 0
+        self.past_update = True
 
     '''
     Description -
@@ -103,8 +104,9 @@ class DataWorker(object):
                         self.past_version.pop(i - offset)
                         offset += 1
 
-                    if not any(self.past_version) and len(terminated) == 2:
-                        storage.update_checkpoint_score.remote(self.past_episode, self.prob)
+                if not any(self.past_version) and len(terminated) == 2 and not self.past_update:
+                    storage.update_checkpoint_score.remote(self.past_episode, self.prob)
+                    self.past_update = True
                 # Set up the observation for the next action
                 player_observation = self.observation_to_input(next_observation)
 
@@ -119,6 +121,7 @@ class DataWorker(object):
                 past_weights, self.past_episode, self.prob = ray.get(storage.sample_past_model.remote())
                 self.past_network.network.set_weights(past_weights)
                 self.past_version[0:4] = [True, True, True, True]
+                self.past_update = False
             # So if I do not have a live game, I need to sample a past model
             # Which means I need to create a list within the storage and sample from that.
             # All the probability distributions will be within the storage class as well.
@@ -360,7 +363,6 @@ class AIInterface:
                 storage.set_target_model.remote(global_agent.get_weights())
                 train_step += 1
                 if train_step % config.CHECKPOINT_STEPS == 0:
-                    storage.set_model.remote()
                     storage.store_checkpoint.remote(train_step)
                     global_agent.tft_save_model(train_step)
 

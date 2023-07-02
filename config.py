@@ -1,9 +1,9 @@
 import numpy as np
 
 # IMPORTANT: Change this value to the number of cpu cores you want to use (recommended 80% of cpu)
-NUM_CPUS = 30
-GPU_SIZE_PER_WORKER = 0.19
-STORAGE_GPU_SIZE = 0.05
+NUM_CPUS = 28
+GPU_SIZE_PER_WORKER = 0.18
+STORAGE_GPU_SIZE = 0.1
 
 DEVICE = "cuda"
 STOCHASTIC = True
@@ -44,10 +44,10 @@ N_HEAD_HIDDEN_LAYERS = 2
 
 ### TIME RELATED VALUES ###
 ACTIONS_PER_TURN = 20
-CONCURRENT_GAMES = 20
+CONCURRENT_GAMES = 16
 NUM_PLAYERS = 8 
-NUM_SAMPLES = 30  # Normal is 25, can be anywhere from 5 to 300
-NUM_SIMULATIONS = 25
+NUM_SAMPLES = 20  # Normal is 25, can be anywhere from 5 to 300
+NUM_SIMULATIONS = 50
 SAMPLES_PER_PLAYER = 256  # Normal is 128
 UNROLL_STEPS = 5
 

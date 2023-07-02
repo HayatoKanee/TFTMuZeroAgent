@@ -59,6 +59,7 @@ class Storage:
         self.checkpoint_list = np.append(self.checkpoint_list, [base_checkpoint])
 
     def store_checkpoint(self, episode):
+        print("STORING CHECKPOINT {}".format(episode))
         checkpoint = Checkpoint(episode, self.max_q_value)
         self.checkpoint_list = np.append(self.checkpoint_list, [checkpoint])
 
@@ -66,11 +67,14 @@ class Storage:
         # Want something so it doesn't expand infinitely
         if len(self.checkpoint_list > 1000):
             self.checkpoint_list = self.checkpoint_list[1:]
+        print("CHECKPOINT STORED")
 
     def update_checkpoint_score(self, episode, prob):
+        print("UPDATING CHECKPOINT SCORE OF EPISODE {}".format(episode))
         checkpoint = next((x for x in self.checkpoint_list if x.epoch == episode), None)
         if checkpoint:
             checkpoint.update_q_score(self.checkpoint_list[-1].epoch, prob)
+        print("UPDATED CHECKPOINT SCORE OF EPISODE {} TO {}".format(episode, checkpoint.q_score))
 
     def sample_past_model(self):
         # List of probabilities for each past model

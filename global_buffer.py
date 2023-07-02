@@ -8,7 +8,7 @@ from collections import deque
 @ray.remote
 class GlobalBuffer:
     def __init__(self, storage_ptr):
-        self.gameplay_experiences = deque(maxlen=25000)
+        self.gameplay_experiences = deque(maxlen=10000)
         self.batch_size = config.BATCH_SIZE
         self.storage_ptr = storage_ptr
 
@@ -31,7 +31,6 @@ class GlobalBuffer:
             target_policy_batch.append(policy)
             sample_set_batch.append(sample_set)
 
-        # print(np.asarray(obs_tensor_batch).shape)
         observation_batch = np.squeeze(np.asarray(obs_tensor_batch))
         action_history_batch = np.asarray(action_history_batch)
         target_value_batch = np.asarray(target_value_batch).astype('float32')
@@ -48,6 +47,7 @@ class GlobalBuffer:
         # First few are self-explanatory
         # done is boolean if game is done after taking said action
         self.gameplay_experiences.append(sample)
+        return True
 
     def available_batch(self):
         queue_length = len(self.gameplay_experiences)
@@ -56,19 +56,5 @@ class GlobalBuffer:
             print(queue_length)
             return True
         time.sleep(5)
+        print("GLOBAL_BUFFER_SIZE {}".format(len(self.gameplay_experiences)))
         return False
-
-    # Leaving this transpose method here in case some model other than
-    # MuZero requires this in the future.
-    def transpose(self, matrix):
-        rows = len(matrix)
-        columns = len(matrix[0])
-
-        matrix_T = []
-        for j in range(columns):
-            row = []
-            for i in range(rows):
-                row.append(matrix[i][j])
-            matrix_T.append(row)
-
-        return matrix_T
