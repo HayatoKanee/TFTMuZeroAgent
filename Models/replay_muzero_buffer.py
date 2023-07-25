@@ -14,12 +14,20 @@ class ReplayBuffer:
         self.root_values = []
         self.g_buffer = g_buffer
 
-    def store_replay_buffer(self, observation, action, reward, policy, string_samples, root_value):
+    def reset(self):
+        self.gameplay_experiences = []
+        self.rewards = []
+        self.policy_distributions = []
+        self.string_samples = []
+        self.action_history = []
+
+    def store_replay_buffer(self, observation, action, reward, policy, string_samples):
         # Records a single step of gameplay experience
         # First few are self-explanatory
         # done is boolean if game is done after taking said action
         self.gameplay_experiences.append(observation)
         self.action_history.append(action)
+        np.clip(reward, config.MINIMUM_REWARD, config.MAXIMUM_REWARD)
         self.rewards.append(reward)
         self.policy_distributions.append(policy)
         self.string_samples.append(string_samples)
