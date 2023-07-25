@@ -41,7 +41,7 @@ class GlobalBuffer:
         # Records a single step of gameplay experience
         # First few are self-explanatory
         # done is boolean if game is done after taking said action
-        self.gameplay_experiences.append(sample[0],sample[1])
+        self.gameplay_experiences.put(sample[0], sample[1])
 
     def available_batch(self):
         queue_length = self.gameplay_experiences.qsize()

@@ -66,12 +66,12 @@ class ReplayBuffer:
                 policy_set = []
                 sample_set = []
                 priority_set = [] 
-
+                print(self.root_values)
                 for current_index in range(sample, sample + config.UNROLL_STEPS + 1):
                     if config.TD_STEPS > 0:
                         bootstrap_index = current_index + config.TD_STEPS
                     else:
-                        bootstrap_index = len(reward_correction)
+                        bootstrap_index = len(reward_correction)-1
                     prediction = self.root_values[bootstrap_index] * config.DISCOUNT ** config.TD_STEPS
                     if config.TD_STEPS > 0 and bootstrap_index < len(self.root_values):
                         value = prediction
@@ -132,5 +132,5 @@ class ReplayBuffer:
 
                 output_sample_set = [1/priority_set[0], [self.gameplay_experiences[sample], action_set, value_mask_set, reward_mask_set,
                                      policy_mask_set, value_set, reward_set, policy_set, sample_set]]
-                self.g_buffer.store_replay_sequence.remote(output_sample_set)
+                self.g_buffer.store_replay_sequence(output_sample_set)
 

@@ -25,8 +25,8 @@ def main():
         test_interface.train_model(starting_train_step=args.starting_episode)
         return
 
-    interface = AI_interface.AIInterface()
-    interface.train_torch_model(starting_train_step=args.starting_episode)
+    interface = TestInterface.AIInterface()
+    interface.train_model(starting_train_step=args.starting_episode)
     # interface.collect_dummy_data()
     # interface.testEnv()
     # interface.PPO_algorithm()
