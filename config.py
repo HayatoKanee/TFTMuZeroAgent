@@ -83,3 +83,6 @@ RUN_MCTS_TESTS = False
 RUN_MAPPING_TESTS = False
 RUN_CHECKPOINT_TESTS = True  # NOTE: This test requires the first 20 checkpoints (0 - 2000) be available
 LOG_COMBAT = False
+
+# ### SIMULATOR ###
+# WINCON = "standard" # standard or level (checks level >= 7)

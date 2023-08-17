@@ -12,7 +12,7 @@ from Simulator.observation import Observation
 from pettingzoo.utils.env import AECEnv
 from pettingzoo.utils import wrappers, agent_selector
 from pettingzoo.utils.conversions import parallel_wrapper_fn
-
+from Simulator import checkWin
 
 def env():
     """
@@ -35,6 +35,7 @@ class TFT_Simulator(AECEnv):
     metadata = {"is_parallelizable": True, "name": "tft-set4-v0"}
 
     def __init__(self, env_config):
+        self.checker = checkWin.checkWinWrapper(config.WINCON)
         self.pool_obj = pool.pool()
         self.PLAYERS = {"player_" + str(player_id): player_class(self.pool_obj, player_id)
                         for player_id in range(config.NUM_PLAYERS)}
@@ -215,6 +216,7 @@ class TFT_Simulator(AECEnv):
                 self.game_round.play_game_round()
 
                 # Check if the game is over
+                # results = self.checker.run(self)
                 if self.check_dead() <= 1 or self.game_round.current_round > 48:
                     # Anyone left alive (should only be 1 player unless time limit) wins the game
                     for player_id in self.agents:

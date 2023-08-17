@@ -24,7 +24,7 @@ class DataWorker(object):
     # This is the main overarching gameplay method.
     # This is going to be implemented mostly in the game_round file under the AI side of things.
     def collect_gameplay_experience(self, env, buffers, weights):
-
+        print("collect experience")
         self.agent_network.set_weights(weights)
         agent = MCTS(self.agent_network)
         # Reset the environment
@@ -34,7 +34,6 @@ class DataWorker(object):
         
         # Used to know when players die and which agent is currently acting
         terminated = {player_id: False for player_id in env.possible_agents}
-
         # While the game is still going on.
         while not all(terminated.values()):
             # Ask our model for an action and policy
