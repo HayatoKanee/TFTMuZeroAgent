@@ -216,17 +216,17 @@ class TFT_Simulator(AECEnv):
                 self.game_round.play_game_round()
 
                 # Check if the game is over
-                # results = self.checker.run(self)
-                if self.check_dead() <= 1 or self.game_round.current_round > 48:
-                    # Anyone left alive (should only be 1 player unless time limit) wins the game
-                    for player_id in self.agents:
-                        if self.PLAYERS[player_id] and self.PLAYERS[player_id].health > 0:
-                            self.PLAYERS[player_id].won_game()
-                            self.rewards[player_id] = 40 + self.PLAYERS[player_id].reward
-                            self._cumulative_rewards[player_id] = self.rewards[player_id]
-                            self.PLAYERS[player_id] = None  # Without this the reward is reset
+                results = self.checker.run(self)
+                # if self.check_dead() <= 1 or self.game_round.current_round > 48:
+                #     # Anyone left alive (should only be 1 player unless time limit) wins the game
+                #     for player_id in self.agents:
+                #         if self.PLAYERS[player_id] and self.PLAYERS[player_id].health > 0:
+                #             self.PLAYERS[player_id].won_game()
+                #             self.rewards[player_id] = 40 + self.PLAYERS[player_id].reward
+                #             self._cumulative_rewards[player_id] = self.rewards[player_id]
+                #             self.PLAYERS[player_id] = None  # Without this the reward is reset
 
-                    self.terminations = {a: True for a in self.agents}
+                #     self.terminations = {a: True for a in self.agents}
 
                 self.infos = {a: {"state_empty": False} for a in self.agents}
 
