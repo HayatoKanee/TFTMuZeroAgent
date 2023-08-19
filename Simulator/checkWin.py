@@ -1,25 +1,35 @@
-class checkWinWrapper():
-    def __init__(self, type):
-        if type == "standard":
-            self.checker = standard(type)
-        elif type == "level":
-            self.checker = level(type)
+class checkWinWrapper:
+    def __init__(self, win_type):
+        if win_type == "standard":
+            self.checker = standard(win_type)
+        elif win_type == "level":
+            self.checker = level(win_type)
     
     def run(self, env):
-        result = self.checker.runCheck(env)
+        result = self.checker.run_check(env)
         return result
 
-class checkWin():
+class checkWin:
     def __init__(self, wincon):
         self.wincon = wincon
+        self.reward = 0
 
-    def runCheck(self, env):
+    def check(self, env):
+        ...
+
+    def get_id(self, env):
+        ...
+
+    def run_cleanup(self, env):
+        ...
+
+    def run_check(self, env):
         gameOver = self.check(env)
-        if gameOver == True:
-            
-            winner = self.getId(env) 
+
+        if gameOver:
+            winner = self.get_id(env)
             reward = self.reward 
-            self.runCleanup(env) 
+            self.run_cleanup(env)
             return reward, winner 
         return None
 
@@ -42,12 +52,12 @@ class standard(checkWin):
         if num_alive <= 1 or env.game_round.current_round > 48:
             return True
     
-    def getId(self, env):
+    def get_id(self, env):
         for player_id in env.agents:
             if env.PLAYERS[player_id] and env.PLAYERS[player_id].health > 0:
                 return player_id
     
-    def runCleanup(self, env):
+    def run_cleanup(self, env):
         for player_id in env.agents:
             if env.PLAYERS[player_id] and env.PLAYERS[player_id].health > 0: 
                 env.PLAYERS[player_id].won_game()
@@ -67,13 +77,13 @@ class level(checkWin):
                 if player.level >= 7:
                     return True 
                 
-    def getId(self, env):
+    def get_id(self, env):
         for key, player in env.PLAYERS.items():
             if player:
                 if player.level >= 7:
                     return key 
                 
-    def runCleanup(self, env):
+    def run_cleanup(self, env):
         for player_id in env.agents:
             if env.PLAYERS[player_id] and env.PLAYERS[player_id].level >= 7: 
                 env.PLAYERS[player_id].won_game()
