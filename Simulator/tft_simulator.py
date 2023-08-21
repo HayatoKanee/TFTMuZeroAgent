@@ -12,7 +12,7 @@ from Simulator.observation import Observation
 from pettingzoo.utils.env import AECEnv
 from pettingzoo.utils import wrappers, agent_selector
 from pettingzoo.utils.conversions import parallel_wrapper_fn
-from Simulator import checkWin
+from Simulator import check_win
 
 def env():
     """
@@ -35,7 +35,7 @@ class TFT_Simulator(AECEnv):
     metadata = {"is_parallelizable": True, "name": "tft-set4-v0"}
 
     def __init__(self, env_config):
-        self.checker = checkWin.checkWinWrapper(config.WINCON)
+        self.checker = check_win.CheckWinWrapper(config.WINCON)
         self.pool_obj = pool.pool()
         self.PLAYERS = {"player_" + str(player_id): player_class(self.pool_obj, player_id)
                         for player_id in range(config.NUM_PLAYERS)}

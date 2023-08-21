@@ -20,14 +20,13 @@ def main():
 
     parser.add_argument('--test', '-t', dest='test', action='store_true')
     args = parser.parse_args()
-    test_interface = TestInterface.AIInterface()
-    test_interface.train_model(starting_train_step=args.starting_episode)
-    print("Ok")
-    # if args.test:    
-    #     return
+    if args.test:   
+        test_interface = TestInterface.AIInterface()
+        test_interface.train_model(starting_train_step=args.starting_episode) 
+        return
 
-    # interface = AI_interface.AIInterface()
-    # interface.train_torch_model(starting_train_step=args.starting_episode)
+    interface = AI_interface.AIInterface()
+    interface.train_torch_model(starting_train_step=args.starting_episode)
     # interface.collect_dummy_data()
     # interface.testEnv()
     # interface.PPO_algorithm()
