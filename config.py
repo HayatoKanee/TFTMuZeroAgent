@@ -85,4 +85,4 @@ RUN_CHECKPOINT_TESTS = True  # NOTE: This test requires the first 20 checkpoints
 LOG_COMBAT = False
 
 # ### SIMULATOR ###
-WINCON = "level" # standard or level (checks level >= 7)
+WINCON = "level" # standard or level (checks level >= 6)
