@@ -87,9 +87,7 @@ class Level(CheckWin):
                 if player.level >= 6:
                     flag = True 
         return flag
-
-                
-                
+               
     def get_id(self):
         for key, player in self.env.PLAYERS.items():
             if player:
