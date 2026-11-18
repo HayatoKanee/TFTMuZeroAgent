@@ -28,16 +28,20 @@ def select_action(search, observation):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, help="Legacy checkpoint containing model_state_dict")
+    parser.add_argument("--device", choices=("cpu", "mps"), default="cpu", help="PyTorch inference device")
     args = parser.parse_args()
 
-    model_config.DEVICE = "cpu"
+    if args.device == "mps" and not torch.backends.mps.is_available():
+        parser.error("Apple Metal (MPS) is unavailable in this PyTorch installation")
+    model_config.DEVICE = args.device
     torch.set_num_threads(1)
     settings = model_config.ModelConfig()
-    network = MuZeroNetwork(settings)
+    network = MuZeroNetwork(settings).to(args.device)
     if args.checkpoint is not None:
         checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
         network.load_state_dict(checkpoint["model_state_dict"])
     print("MuZero weights:", args.checkpoint or "untrained (random initialization)", flush=True)
+    print("Network device:", next(network.parameters()).device, flush=True)
     search = MCTS(network.eval(), settings)
 
     def policy(observation, info, agent, env):

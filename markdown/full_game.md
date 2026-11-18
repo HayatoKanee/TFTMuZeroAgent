@@ -92,6 +92,8 @@ PYTHONPATH=.venv/muzero-source NUM_SIMULATIONS=4 python -m examples.muzero_vs_ra
 
 The default run uses randomly initialized weights. To evaluate saved weights, pass `--checkpoint PATH` with a legacy `model_state_dict` checkpoint and the architecture settings used to train it.
 
+On a Mac with PyTorch MPS available, add `--device mps` to run neural-network inference on Metal. The simulator and the C++ search tree run on CPU.
+
 ## Observation
 
 Every `observe` / `reset` / `step` payload is:
