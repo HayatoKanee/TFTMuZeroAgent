@@ -71,6 +71,27 @@ for agent in env.agent_iter():
 env.close()
 ```
 
+## Play with MuZero
+
+The fork keeps the original network and search on the `codex/muzero-training` branch. The example runs that search for one seat against seven random opponents. It takes the same token observation and legal-action mask that the simulator gives a player.
+
+From the repository root, activate a virtual environment and build the historical Cython extension once. This requires a C++ compiler.
+
+```sh
+python -m pip install -e '.[muzero]'
+mkdir -p .venv/muzero-source
+git archive 061d7f7525c3efe1a544f7f347386ab5aeb5bc8f Models core/ctree config.py | tar -x -C .venv/muzero-source
+(cd .venv/muzero-source/core/ctree && python setup.py build_ext --inplace)
+```
+
+Run a full game on CPU with four search simulations per decision.
+
+```sh
+PYTHONPATH=.venv/muzero-source NUM_SIMULATIONS=4 python -m examples.muzero_vs_random
+```
+
+The default run uses randomly initialized weights. To evaluate saved weights, pass `--checkpoint PATH` with a legacy `model_state_dict` checkpoint and the architecture settings used to train it.
+
 ## Observation
 
 Every `observe` / `reset` / `step` payload is:
@@ -84,6 +105,7 @@ Every `observe` / `reset` / `step` payload is:
 ### Info keys (per agent)
 
 - `start_turn` — first action of that player's shop phase
+- `placement` — final rank when the player leaves the game. If the round limit ends play, remaining seats rank by health.
 - `save_battle` — this player's upcoming fight is flagged for saving
 - `state_empty` — skip empty terminal shells
 - `player`, `shop`, `game_round`, `actions_taken`

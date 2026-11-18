@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+muzero = ["Cython>=3", "python-dotenv", "setuptools>=66", "torch>=2.6"]
 
 [tool.setuptools.packages.find]
 include = ["Simulator*"]

@@ -172,19 +172,18 @@ def collect_episode(
     observations, infos = env.reset()
     agents = list(env.possible_agents)
     recorder = EpisodeRecorder(agents)
-    terminated = {agent: False for agent in agents}
     previously_done = set()
     next_place = len(agents)
     steps = 0
     started = time.time_ns()
 
-    while not all(terminated.get(agent, False) for agent in agents):
+    while len(previously_done) < len(agents):
         actions = {}
-        living = getattr(env, "agents", None) or [
-            agent for agent in agents if not terminated.get(agent, False)
-        ]
+        living = getattr(env, "agents", None)
+        if living is None:
+            living = agents
         for agent in living:
-            if terminated.get(agent, False):
+            if agent in previously_done:
                 continue
             obs = observations.get(agent) if isinstance(observations, dict) else observations
             info = infos.get(agent, {}) if isinstance(infos, dict) else {}
@@ -218,7 +217,7 @@ def collect_episode(
 
         for agent in agents:
             if terminated.get(agent, False) and agent not in previously_done:
-                recorder.set_placement(agent, next_place)
+                recorder.set_placement(agent, infos.get(agent, {}).get("placement", next_place))
                 next_place -= 1
                 previously_done.add(agent)
 

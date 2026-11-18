@@ -60,6 +60,7 @@ python examples/collect_episodes.py
 | `examples/single_player_env.py` | Single-player env |
 | `examples/vector_position_env.py` | Vectorized position envs |
 | `examples/default_agent_vs_random.py` | Heuristic `Default_Agent` vs random |
+| [`examples/muzero_vs_random.py`](markdown/full_game.md#play-with-muzero) | Historical MuZero search vs random, with optional saved weights |
 | `examples/render_porosight.py` | JSON dump for PoroSight |
 
 ## Layout

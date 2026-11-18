@@ -250,7 +250,9 @@ class TFT_Simulator(AECEnv):
                 self.num_dead += 1
                 self.num_alive -= 1
 
-                self.rewards[player_id] = self.calculate_winloss(self.num_alive + 1)
+                placement = self.num_alive + 1
+                self.infos[player_id]["placement"] = placement
+                self.rewards[player_id] = self.calculate_winloss(placement)
                 self.rewards[player_id] += player.reward
 
                 self.player_manager.kill_player(player_id)
@@ -343,11 +345,14 @@ class TFT_Simulator(AECEnv):
                     if is_porosight_render(self.render_mode):
                         self.game_state.write_json()
 
-                    for player_id in self.agents:
-                        if not self.terminations[player_id]:
-                            self.rewards[player_id] = self.calculate_winloss(1)
-                            self.rewards[player_id] += self.player_manager.player_states[player_id].reward
-                            self.player_manager.kill_player(player_id)
+                    survivors = [agent for agent in self.agents if not self.terminations[agent]]
+                    survivors.sort(key=lambda agent: self.player_manager.player_states[agent].health, reverse=True)
+                    for placement, player_id in enumerate(survivors, start=1):
+                        self.infos[player_id]["placement"] = placement
+                        # The simulator gives every player still alive at the round limit the win reward.
+                        self.rewards[player_id] = self.calculate_winloss(1)
+                        self.rewards[player_id] += self.player_manager.player_states[player_id].reward
+                        self.player_manager.kill_player(player_id)
 
                     self.terminations = {a: True for a in self.agents}
 

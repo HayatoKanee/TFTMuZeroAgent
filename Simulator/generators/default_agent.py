@@ -27,6 +27,7 @@ class Default_Agent:
         self.champ_decider_action_format = champ_decider_action_format
 
     def policy(self, player, shop, game_round, mask):
+        mask = np.reshape(mask, (55, 38))
         self.current_round = game_round
         if game_round == 1 or game_round == 2:
             return self.round_1_2(player, shop, mask)
